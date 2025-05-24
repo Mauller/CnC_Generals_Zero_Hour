@@ -681,20 +681,31 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 		case GUI_COMMAND_EXIT_CONTAINER:
 		{
 			Int i;
-			ObjectID objID;
+			// TheSuperHackers @fix Caball009/Mauller 23/05/2025 Fix uninitialized variable to prevent invalid behaviour when the control container is empty
+			// We return early if there is no matching control to prevent an invalid update on the control data
+			// If we find a match we break to preserve the slot index. And if the object no longer exists we clear the relevant control data
+			ObjectID objID = INVALID_ID;
 
 			//
 			// find the object ID that wants to exit by scanning through the transport data and looking
 			// for the matching control button
 			//
-			for( i = 0; i < MAX_COMMANDS_PER_SET; i++ )
-				if( m_containData[ i ].control == control )
+			for (i = 0; i < MAX_COMMANDS_PER_SET; i++)
+			{
+				if (m_containData[i].control == control)
+				{
 					objID = m_containData[ i ].objectID;
+					break;
+				}
+			}
+
+			if (objID == INVALID_ID)
+				break;
 
 			// get the actual object
 			Object *objWantingExit = TheGameLogic->findObjectByID( objID );
 			
-			// if object is not found remove inventory entry and exit
+			// if the control container returns an object ID but the object is not found, remove the control entry and exit
 			if( objWantingExit == NULL )
 			{
 
