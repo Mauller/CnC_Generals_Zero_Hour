@@ -470,6 +470,13 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 					break;
 				}
 
+				// TheSuperHackers @Bugfix Mauller 07/06/2025 Scale the viewport scrolling so it is independent of FPS
+				// The scaling is based on the original expected FPS of 30, this provides a consistent scroll speed at all FPS
+				// This also fixes scrolling within replays when fast forwarding due to the unlocked FPS
+				Real fpsRatio = 30.0f / TheDisplay->getAverageFPS();
+				offset.x *= fpsRatio;
+				offset.y *= fpsRatio;
+
 				TheInGameUI->setScrollAmount(offset);
 				TheTacticalView->scrollBy( &offset );
 			}
