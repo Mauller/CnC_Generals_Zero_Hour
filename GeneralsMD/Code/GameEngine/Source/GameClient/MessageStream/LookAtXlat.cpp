@@ -470,6 +470,14 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 					break;
 				}
 
+				// TheSuperHackers @bugfix Mauller 07/06/2025 Adjust the viewport scrolling so it is independent of gameClient FPS
+				// The scaling is based on the logic rate of 30 FPS, this provides a consistent scroll speed at all gameCLient FPS
+				// This also fixes scrolling within replays when fast forwarding due to the uncapped FPS
+				// When the FPS is in excess of the expected frame rate, the ratio will reduce the offset of the cameras movement
+				Real logicToFpsRatio = LOGICFRAMES_PER_SECONDS_REAL / TheDisplay->getCurrentFPS();
+				offset.x *= logicToFpsRatio;
+				offset.y *= logicToFpsRatio;
+
 				TheInGameUI->setScrollAmount(offset);
 				TheTacticalView->scrollBy( &offset );
 			}
