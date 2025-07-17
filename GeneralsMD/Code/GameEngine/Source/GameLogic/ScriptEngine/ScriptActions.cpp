@@ -4609,9 +4609,11 @@ void ScriptActions::doCameraStopTetherNamed(void)
 //-------------------------------------------------------------------------------------------------
 /** doCameraSetDefault */
 //-------------------------------------------------------------------------------------------------
-void ScriptActions::doCameraSetDefault(Real pitch, Real angle, Real maxHeight)
+void ScriptActions::doCameraSetDefault(Real pitch, Real angle, Real heighScale)
 {
-	TheTacticalView->setDefaultView(pitch, angle, maxHeight);
+	TheTacticalView->setCameraHeightLimitsToDefault(heighScale);
+	TheTacticalView->setPitch(pitch);
+	TheTacticalView->setAngle(angle);
 }
 
 //-------------------------------------------------------------------------------------------------
