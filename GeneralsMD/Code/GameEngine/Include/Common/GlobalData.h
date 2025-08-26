@@ -57,6 +57,13 @@ CONSTEXPR const Int MAX_GLOBAL_LIGHTS = 3;
 CONSTEXPR const Int SIMULATE_REPLAYS_SEQUENTIAL = -1;
 
 //-------------------------------------------------------------------------------------------------
+enum TriState  {
+	UNINITIALIZED = -1,
+	DISABLED = 0,
+	ENABLED = 1
+};
+
+//-------------------------------------------------------------------------------------------------
 class CommandLineData
 {
 	friend class CommandLine;
@@ -372,6 +379,8 @@ public:
 
 	Real m_keyboardScrollFactor;			///< Factor applied to game scrolling speed via keyboard scrolling
 	Real m_keyboardDefaultScrollFactor;			///< Factor applied to game scrolling speed via keyboard scrolling
+	TriState m_drawScrollAnchor;					///< Set that the scroll anchor should be enabled
+	TriState m_moveScrollAnchor;					///< set that the scroll anchor should move
 
 	Bool m_animateWindows;						///< Should we animate window transitions?
 

@@ -1216,6 +1216,11 @@ void InGameUI::init( void )
 
 	m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 
+	if (TheGlobalData->m_drawScrollAnchor != UNINITIALIZED)
+		setDrawRMBScrollAnchor(TheGlobalData->m_drawScrollAnchor);
+
+	if (TheGlobalData->m_moveScrollAnchor != UNINITIALIZED)
+		setMoveRMBScrollAnchor(TheGlobalData->m_moveScrollAnchor);
 
 }  // end init
 
