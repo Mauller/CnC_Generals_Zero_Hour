@@ -584,6 +584,13 @@ public:  // ********************************************************************
 	void setDrawRMBScrollAnchor(Bool b) { m_drawRMBScrollAnchor = b; }
 	void setMoveRMBScrollAnchor(Bool b) { m_moveRMBScrollAnchor = b; }
 
+	// UI scaling function methods
+	Real m_unitInfoScaleFactor;
+
+	void calcUnitInfoScaleFactor();
+
+	Real getUnitInfoScaleFactor();
+
 private:
 	virtual Int getIdleWorkerCount( void );
 	virtual Object *findIdleWorker( Object *obj);
