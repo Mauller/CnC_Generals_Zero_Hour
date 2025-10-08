@@ -1175,10 +1175,15 @@ void PathfindCellInfo::releaseCellInfos(void)
  */
 PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord2D &pos)
 {
+#if RETAIL_COMPATIBLE_PATHFINDING
 	PathfindCellInfo *info = s_firstFree;
 	if (s_firstFree) {
 		DEBUG_ASSERTCRASH(s_firstFree->m_isFree, ("Should be freed."));
 		s_firstFree = s_firstFree->m_pathParent;
+#else
+	PathfindCellInfo* info = cell->getCellInfo();
+		{
+#endif
 		info->m_isFree = false;  // Just allocated it.
 		info->m_cell = cell;
 		info->m_pos = pos;
@@ -1206,12 +1211,17 @@ PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord
  */
 void PathfindCellInfo::releaseACellInfo(PathfindCellInfo *theInfo)
 {
+#if RETAIL_COMPATIBLE_PATHFINDING
 	DEBUG_ASSERTCRASH(!theInfo->m_isFree, ("Shouldn't be free."));
 	//@ todo -fix this assert on usa04.  jba.
 	//DEBUG_ASSERTCRASH(theInfo->m_obstacleID==0, ("Shouldn't be obstacle."));
 	theInfo->m_pathParent = s_firstFree;
 	s_firstFree = theInfo;
 	s_firstFree->m_isFree = true;
+#else
+	theInfo->m_pathParent = NULL;
+	theInfo->m_isFree = true;
+#endif
 }
 
 //-----------------------------------------------------------------------------------
@@ -1237,6 +1247,15 @@ PathfindCell::~PathfindCell( void )
 		DEBUG_LOG( ("PathfindCell::~PathfindCell m_info Allocated."));
 	}
 }
+
+#if !RETAIL_COMPATIBLE_PATHFINDING
+PathfindCellInfo* PathfindCell::getCellInfo()
+{
+	m_pathfindCellInfo.m_pathParent = NULL;
+	m_pathfindCellInfo.m_isFree = true;
+	return &m_pathfindCellInfo;
+}
+#endif
 
 /**
  * Reset the cell to default values

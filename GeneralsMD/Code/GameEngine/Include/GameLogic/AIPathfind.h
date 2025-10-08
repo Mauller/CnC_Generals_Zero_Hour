@@ -280,6 +280,10 @@ public:
 	PathfindCell(void);
 	~PathfindCell(void);
 
+#if !RETAIL_COMPATIBLE_PATHFINDING
+	PathfindCellInfo* getCellInfo();
+#endif
+
 	Bool setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoord2D &pos );				///< flag this cell as an obstacle, from the given one
 	Bool removeObstacle( Object *obstacle );				///< unflag this cell as an obstacle, from the given one
 	void setType( CellType type );	///< set the cell type
@@ -364,6 +368,9 @@ public:
 	PathfindLayerEnum getConnectLayer( void ) const { return (PathfindLayerEnum)m_connectsToLayer; }				///< get the cell layer connect id
 
 private:
+#if !RETAIL_COMPATIBLE_PATHFINDING
+	PathfindCellInfo m_pathfindCellInfo;
+#endif
 	PathfindCellInfo *m_info;
 	zoneStorageType m_zone:14;			///< Zone. Each zone is a set of adjacent terrain type.  If from & to in the same zone, you can successfully pathfind.  If not,
 														// you still may be able to if you can cross multiple terrain types.
