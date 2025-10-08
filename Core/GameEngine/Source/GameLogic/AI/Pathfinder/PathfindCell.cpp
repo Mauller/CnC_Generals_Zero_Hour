@@ -45,6 +45,15 @@ PathfindCell::~PathfindCell()
 	}
 }
 
+#if !RETAIL_COMPATIBLE_PATHFINDING
+PathfindCellInfo* PathfindCell::getCellInfo()
+{
+	m_pathfindCellInfo.m_pathParent = NULL;
+	m_pathfindCellInfo.m_isFree = true;
+	return &m_pathfindCellInfo;
+}
+#endif
+
 /**
  * Reset the cell to default values
  */

@@ -65,6 +65,10 @@ public:
 	PathfindCell();
 	~PathfindCell();
 
+#if !RETAIL_COMPATIBLE_PATHFINDING
+	PathfindCellInfo* getCellInfo();
+#endif
+
 	Bool setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoord2D &pos );				///< flag this cell as an obstacle, from the given one
 	Bool removeObstacle( Object *obstacle );				///< unflag this cell as an obstacle, from the given one
 	void setType( CellType type );	///< set the cell type
@@ -174,6 +178,9 @@ public:
 	static Bool groundCliff(const PathfindCell& targetCell, const PathfindCell& sourceCell);
 
 private:
+#if !RETAIL_COMPATIBLE_PATHFINDING
+	PathfindCellInfo m_pathfindCellInfo;
+#endif
 	PathfindCellInfo *m_info;
 	ObjectID m_obstacleID;	                  ///< the object ID who overlaps this cell
 	UnsignedInt m_blockedByAlly : 1;          ///< True if this cell is blocked by an allied unit.

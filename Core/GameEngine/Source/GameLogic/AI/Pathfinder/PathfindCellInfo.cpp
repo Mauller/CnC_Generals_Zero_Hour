@@ -17,6 +17,7 @@
 */
 
 #include "PreRTS.h"
+#include "GameLogic/Pathfinder/PathfindCell.h"
 #include "GameLogic/Pathfinder/PathfindCellInfo.h"
 
 constexpr const UnsignedInt CELL_INFOS_TO_ALLOCATE = 30000;
@@ -77,10 +78,15 @@ void PathfindCellInfo::releaseCellInfos()
  */
 PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord2D &pos)
 {
-	PathfindCellInfo *info = s_firstFree;
+#if RETAIL_COMPATIBLE_PATHFINDING
+	PathfindCellInfo* info = s_firstFree;
 	if (s_firstFree) {
 		DEBUG_ASSERTCRASH(s_firstFree->m_isFree, ("Should be freed."));
 		s_firstFree = s_firstFree->m_pathParent;
+#else
+	PathfindCellInfo* info = cell->getCellInfo();
+	{
+#endif
 		info->m_isFree = false;  // Just allocated it.
 		info->m_cell = cell;
 		info->m_pos = pos;
@@ -106,12 +112,17 @@ PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord
 /**
  * Returns a pathfindcellinfo.
  */
-void PathfindCellInfo::releaseACellInfo(PathfindCellInfo *theInfo)
+void PathfindCellInfo::releaseACellInfo(PathfindCellInfo* theInfo)
 {
+#if RETAIL_COMPATIBLE_PATHFINDING
 	DEBUG_ASSERTCRASH(!theInfo->m_isFree, ("Shouldn't be free."));
 	//@ todo -fix this assert on usa04.  jba.
 	//DEBUG_ASSERTCRASH(theInfo->m_obstacleID==0, ("Shouldn't be obstacle."));
 	theInfo->m_pathParent = s_firstFree;
 	s_firstFree = theInfo;
 	s_firstFree->m_isFree = true;
+#else
+	theInfo->m_pathParent = NULL;
+	theInfo->m_isFree = true;
+#endif
 }
