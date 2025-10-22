@@ -503,7 +503,8 @@ void W3DView::calcCameraConstraints()
 		center.x -= bottom.x;
 		center.y -= bottom.y;
 
-		Real offset = center.length();
+		// TheSuperHackers @bugfix Mauller 22/10/2025 Halve the camera offset to allow the camera to move closer to the map edges
+		Real offset = center.length() * 0.5f;
 
 		if (TheGlobalData->m_debugAI) {
 			offset = -1000; // push out the constraints so we can look at staging areas.
