@@ -52,6 +52,8 @@
 #include "W3DDevice/GameClient/TerrainTex.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
 
+#include "GameClient/view.h"
+
 #include "Common/file.h"
 
 
@@ -534,6 +536,19 @@ WorldHeightMap::WorldHeightMap(ChunkInputStream *pStrm, Bool logicalDataOnly):
 		m_drawWidthX=m_width;
 		m_drawHeightY=m_height;
 	}
+	else {
+		//TheSuperHacker @bugfix Mauller 23/10/2025 Increase the terrain draw area for wide aspect ratios
+		Real baseAspectRatio = (Real)DEFAULT_DISPLAY_WIDTH / (Real)DEFAULT_DISPLAY_HEIGHT;
+		Real currentAspectRatio = (Real)TheTacticalView->getWidth() / (Real)TheTacticalView->getHeight();
+		constexpr Real drawAreaScaleFactor = 1.5f;
+
+		if (currentAspectRatio > baseAspectRatio)
+		{
+			m_drawWidthX *= drawAreaScaleFactor;
+			m_drawHeightY *= drawAreaScaleFactor;
+		}
+	}
+
 	if (m_drawWidthX > m_width) {
 		m_drawWidthX = m_width;
 	}
