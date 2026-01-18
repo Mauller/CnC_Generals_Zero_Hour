@@ -1126,6 +1126,14 @@ void Pathfinder::forceCleanCells()
 
 	for (int j = 0; j <= m_extent.hi.y; ++j) {
 		for (int i = 0; i <= m_extent.hi.x; ++i) {
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
+			// TheSuperHackers @info when pathfinding resources cannot be allocated to a pathfindCell,
+			// The function to remove the obstacle returns early and the cell is still flagged as an obstacle.
+			// We need to make sure to reset pathfindCells with a set m_obstacleID and no m_info.
+			if (m_map[i][j].isObstructionInvalid()) {
+				m_map[i][j].clearObstruction();
+			}
+#endif
 			if (m_map[i][j].hasInfo()) {
 				m_map[i][j].releaseInfo();
 			}
@@ -1253,6 +1261,11 @@ void PathfindCell::reset( )
 		PathfindCellInfo::releaseACellInfo(m_info);
 		m_info = nullptr;
 	}
+	m_obstacleID = INVALID_ID;
+	m_blockedByAlly = false;
+	m_obstacleIsFence = false;
+	m_obstacleIsTransparent = false;
+
 	m_connectsToLayer = LAYER_INVALID;
 	m_layer = LAYER_GROUND;
 
@@ -1289,11 +1302,29 @@ Bool PathfindCell::startPathfind( PathfindCell *goalCell  )
  */
 inline Bool PathfindCell::isBlockedByAlly(void) const
 {
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+	if (s_useFixedPathfinding) {
+		return m_blockedByAlly;
+	}
+
 	return m_info->m_blockedByAlly;
+#else
+	return m_blockedByAlly;
+#endif
 }
+
 inline void PathfindCell::setBlockedByAlly(Bool blocked)
 {
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+	if (s_useFixedPathfinding) {
+		m_blockedByAlly = (blocked != 0);
+		return;
+	}
+
 	m_info->m_blockedByAlly = (blocked != 0);
+#else
+	m_blockedByAlly = (blocked != 0);
+#endif
 }
 
 /**
@@ -1503,7 +1534,18 @@ void PathfindCell::setPosUnit(ObjectID unitID, const ICoord2D &pos )
  */
 inline ObjectID PathfindCell::getObstacleID(void) const
 {
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+	// TheSuperHackers @info if PathfindCellInfo resources have run out, we stil need to track the obstacle blocking the pathfindcell
+	// To do this we have to keep a copy of the obstacle ID on the PathfindCell and clear the cell m_type when switching
+	// to the fixed pathfinding if the cell has been deemed to be clear of an obstacle
+	if (s_useFixedPathfinding) {
+		return m_obstacleID;
+	}
+
 	return m_info ? m_info->m_obstacleID : INVALID_ID;
+#else
+	return m_obstacleID;
+#endif
 }
 
 
@@ -1525,17 +1567,37 @@ Bool PathfindCell::setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoo
 
 	if (isRubble) {
 		m_type = PathfindCell::CELL_RUBBLE;
+		m_obstacleID = INVALID_ID;
+		m_obstacleIsFence = false;
+		m_obstacleIsTransparent = false;
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+		if (s_useFixedPathfinding) {
+			return true;
+		}
+
+
 		if (m_info) {
 			m_info->m_obstacleID = INVALID_ID;
 			releaseInfo();
 		}
+#endif
 		return true;
 	}
 
 	m_type = PathfindCell::CELL_OBSTACLE;
+	m_obstacleID = obstacle->getID();
+	m_obstacleIsFence = isFence;
+	m_obstacleIsTransparent = obstacle->isKindOf(KINDOF_CAN_SEE_THROUGH_STRUCTURE);
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+	if (s_useFixedPathfinding) {
+		return true;
+	}
+
 	if (!m_info) {
 		m_info = PathfindCellInfo::getACellInfo(this, pos);
 		if (!m_info) {
+			// TheSuperHackers @info We need to track orphaned cells set as obstacles so we can cleanup and failover properly
+			m_obstacleID = obstacle->getID();
 			DEBUG_CRASH(("Not enough PathFindCellInfos in pool."));
 			return false;
 		}
@@ -1543,6 +1605,7 @@ Bool PathfindCell::setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoo
 	m_info->m_obstacleID = obstacle->getID();
 	m_info->m_obstacleIsFence = isFence;
 	m_info->m_obstacleIsTransparent = obstacle->isKindOf(KINDOF_CAN_SEE_THROUGH_STRUCTURE);
+#endif
 	return true;
 }
 
@@ -1551,11 +1614,27 @@ Bool PathfindCell::setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoo
  */
 void PathfindCell::setType( CellType type )
 {
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+	if (s_useFixedPathfinding) {
+		if (m_obstacleID != INVALID_ID) {
+			DEBUG_ASSERTCRASH(type == PathfindCell::CELL_OBSTACLE, ("Wrong type."));
+			m_type = PathfindCell::CELL_OBSTACLE;
+			return;
+		}
+	}
+
 	if (m_info && (m_info->m_obstacleID != INVALID_ID)) {
 		DEBUG_ASSERTCRASH(type==PathfindCell::CELL_OBSTACLE, ("Wrong type."));
 		m_type = PathfindCell::CELL_OBSTACLE;
 		return;
 	}
+#else
+	if (m_obstacleID != INVALID_ID) {
+		DEBUG_ASSERTCRASH(type == PathfindCell::CELL_OBSTACLE, ("Wrong type."));
+		m_type = PathfindCell::CELL_OBSTACLE;
+		return;
+	}
+#endif
 	m_type = type;
 }
 
@@ -1568,11 +1647,33 @@ Bool PathfindCell::removeObstacle( Object *obstacle )
 	if (m_type == PathfindCell::CELL_RUBBLE) {
 		m_type = PathfindCell::CELL_CLEAR;
 	}
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+	if (s_useFixedPathfinding) {
+		if (m_obstacleID != obstacle->getID()) return false;
+		m_type = PathfindCell::CELL_CLEAR;
+		m_obstacleID = INVALID_ID;
+		m_obstacleIsFence = false;
+		m_obstacleIsTransparent = false;
+		return true;
+	}
+
 	if (!m_info) return false;
 	if (m_info->m_obstacleID != obstacle->getID()) return false;
 	m_type = PathfindCell::CELL_CLEAR;
 	m_info->m_obstacleID = INVALID_ID;
 	releaseInfo();
+
+	// TheSuperHackers @info we need to clear PathfindCell obstacleID so we can identify bugged cells during failover
+	m_obstacleID = INVALID_ID;
+	m_obstacleIsFence = false;
+	m_obstacleIsTransparent = false;
+#else
+	if (m_obstacleID != obstacle->getID()) return false;
+	m_type = PathfindCell::CELL_CLEAR;
+	m_obstacleID = INVALID_ID;
+	m_obstacleIsFence = false;
+	m_obstacleIsTransparent = false;
+#endif
 	return true;
 }
 
@@ -1779,8 +1880,16 @@ inline Bool PathfindCell::isObstaclePresent(ObjectID objID) const
 {
 	if (objID != INVALID_ID && (getType() == PathfindCell::CELL_OBSTACLE))
 	{
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+		if (s_useFixedPathfinding) {
+			return m_obstacleID == objID;
+		}
+
 		DEBUG_ASSERTCRASH(m_info, ("Should have info to be obstacle."));
 		return (m_info && m_info->m_obstacleID == objID);
+#else
+		return m_obstacleID == objID;
+#endif
 	}
 
 	return false;
@@ -1792,7 +1901,15 @@ inline Bool PathfindCell::isObstaclePresent(ObjectID objID) const
  */
 inline Bool PathfindCell::isObstacleTransparent() const
 {
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+	if (s_useFixedPathfinding) {
+		return m_obstacleIsTransparent;
+	}
+
 	return m_info ? m_info->m_obstacleIsTransparent : false;
+#else
+	return m_obstacleIsTransparent;
+#endif
 }
 
 /**
@@ -1800,7 +1917,15 @@ inline Bool PathfindCell::isObstacleTransparent() const
  */
 inline Bool PathfindCell::isObstacleFence(void) const
 {
+#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION && RETAIL_COMPATIBLE_PATHFINDING
+	if (s_useFixedPathfinding) {
+		return m_obstacleIsFence;
+	}
+
 	return m_info ? m_info->m_obstacleIsFence : false;
+#else
+	return m_obstacleIsFence;
+#endif
 }
 
 
