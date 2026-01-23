@@ -1686,60 +1686,40 @@ PathfindCell *PathfindCell::putOnSortedOpenList( PathfindCell *list )
 {
 	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
 	DEBUG_ASSERTCRASH(m_info->m_closed==FALSE && m_info->m_open==FALSE, ("Serious error - Invalid flags. jba"));
+
+	// mark newCell as being on open list
+	m_info->m_open = true;
+	m_info->m_closed = false;
+
 	if (list == nullptr)
 	{
 		list = this;
 		m_info->m_prevOpen = nullptr;
 		m_info->m_nextOpen = nullptr;
-	}
-	else
-	{
-		// insertion sort
-		PathfindCell *c, *lastCell = nullptr;
-#if RETAIL_COMPATIBLE_PATHFINDING
-		// TheSuperHackers @bugfix In the retail compatible pathfinding, on rare occasions, we get stuck in an infinite loop
-		// External code should pickup on the bad behaviour and cleanup properly, but we need to explicitly break out here
-		// The fixed pathfinding does not have this issue due to the proper cleanup of pathfindCells and their pathfindCellInfos
-		UnsignedInt cellCount = 0;
-		for (c = list; c && cellCount < PATHFIND_CELLS_PER_FRAME; c = c->getNextOpen())
-		{
-			cellCount++;
-#else
-		for (c = list; c; c = c->getNextOpen())
-		{
-#endif
-			if (c->m_info->m_totalCost > m_info->m_totalCost)
-				break;
-
-			lastCell = c;
-		}
-
-		if (c)
-		{
-			// insert just before "c"
-			if (c->m_info->m_prevOpen)
-				c->m_info->m_prevOpen->m_nextOpen = this->m_info;
-			else
-				list = this;
-
-			m_info->m_prevOpen = c->m_info->m_prevOpen;
-			c->m_info->m_prevOpen = this->m_info;
-
-			m_info->m_nextOpen = c->m_info;
-
-		}
-		else
-		{
-			// append after "lastCell" - end of list
-			lastCell->m_info->m_nextOpen = this->m_info;
-			m_info->m_prevOpen = lastCell->m_info;
-			m_info->m_nextOpen = nullptr;
-		}
+		return this;
 	}
 
-	// mark newCell as being on open list
-	m_info->m_open = true;
-	m_info->m_closed = false;
+	// If needs inserting at beginning
+	if (m_info->m_totalCost < list->m_info->m_totalCost) {
+		m_info->m_prevOpen = nullptr;
+		list->m_info->m_prevOpen = this->m_info;
+		m_info->m_nextOpen = list->m_info;
+		return this;
+	}
+
+	// Traverse the list to find correct position
+	PathfindCell* current = list;
+	while (current->m_info->m_nextOpen && current->m_info->m_nextOpen->m_totalCost <= m_info->m_totalCost) {
+		current = current->getNextOpen();
+	}
+
+	// Insert the new node in the correct position
+	m_info->m_nextOpen = current->m_info->m_nextOpen;
+	if (current->m_info->m_nextOpen != nullptr) {
+		current->m_info->m_nextOpen->m_prevOpen = this->m_info;
+	}
+	current->m_info->m_nextOpen = this->m_info;
+	m_info->m_prevOpen = current->m_info;
 
 	return list;
 }
