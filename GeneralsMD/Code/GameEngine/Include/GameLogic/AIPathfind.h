@@ -223,7 +223,7 @@ protected:
 	static PathfindCellInfo *s_firstFree;							///<
 
 
-	PathfindCellInfo *m_nextOpen, *m_prevOpen;						///< for A* "open" list, shared by closed list
+	PathfindCellInfo *m_nextOpen, *m_prevOpen, *m_nextSkip, *m_prevSkip;						///< for A* "open" list, shared by closed list
 
 	PathfindCellInfo *m_pathParent;												///< "parent" cell from pathfinder
 	PathfindCell *m_cell;															///< Cell this info belongs to currently.
@@ -327,6 +327,7 @@ public:
 	static Int releaseOpenList( PathfindCell *list );
 
 	inline PathfindCell *getNextOpen(void) {return m_info->m_nextOpen?m_info->m_nextOpen->m_cell: nullptr;}
+	inline PathfindCell* getNextSkip(void) { return m_info->m_nextSkip ? m_info->m_nextSkip->m_cell : nullptr; }
 
 	inline UnsignedShort getXIndex(void) const {return m_info->m_pos.x;}
 	inline UnsignedShort getYIndex(void) const {return m_info->m_pos.y;}
