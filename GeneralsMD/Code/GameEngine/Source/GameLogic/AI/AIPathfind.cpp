@@ -1697,6 +1697,8 @@ PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 	// mark newCell as being on open list
 	m_info->m_open = true;
 	m_info->m_closed = false;
+	m_info->m_nextSkip = nullptr;
+	m_info->m_prevSkip = nullptr;
 
 	if (list == nullptr)
 	{
@@ -1708,22 +1710,6 @@ PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 		return this;
 	}
 
-	// If needs inserting at beginning
-	//if (m_info->m_totalCost < list->m_info->m_totalCost) {
-	//	m_info->m_prevOpen = nullptr;
-	//	list->m_info->m_prevOpen = this->m_info;
-	//	m_info->m_nextOpen = list->m_info;
-
-	//	//Move head of skips to new head
-	//	m_info->m_nextSkip = list->m_info->m_nextSkip;
-	//	if (list->m_info->m_nextSkip)
-	//		list->m_info->m_nextSkip->m_prevSkip = this->m_info;
-	//	list->m_info->m_nextSkip = nullptr;
-	//	m_info->m_prevSkip = nullptr;
-
-	//	return this;
-	//}
-
 	// Traverse the skip list to find closest position
 	PathfindCell* skip = list;
 	PathfindCell* current, * previous = nullptr;
@@ -1731,19 +1717,35 @@ PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 		skip = skip->getNextSkip();
 	}
 
-	for (current = skip; current; current = current->getNextOpen())
+	// insertion sort
+	current = skip;
+	while (current && current->m_info->m_totalCost <= m_info->m_totalCost)
 	{
-		if (current->m_info->m_totalCost > m_info->m_totalCost)
-			break;
-
 		previous = current;
+		current = current->getNextOpen();
 	}
 
 	if (current)
 	{
 		// insert just before "c"
-		if (current->m_info->m_prevOpen)
+		if (current->m_info->m_prevOpen) {
 			current->m_info->m_prevOpen->m_nextOpen = this->m_info;
+
+			// Insert new skip level if we are going to add a new skip
+			if ((m_info->m_totalCost + m_info->m_pos.x + m_info->m_pos.y) % 4 == 0) {
+				m_info->m_nextSkip = skip->m_info->m_nextSkip;
+				if (skip->m_info->m_nextSkip != nullptr)
+					skip->m_info->m_nextSkip->m_prevSkip = this->m_info;
+
+				skip->m_info->m_nextSkip = this->m_info;
+				m_info->m_prevSkip = skip->m_info;
+
+				DEBUG_ASSERTCRASH(this->m_info != this->m_info->m_nextSkip, ("Shouldnt be linked to self, nextSkip, insert to skip list."));
+				DEBUG_ASSERTCRASH(this->m_info != this->m_info->m_prevSkip, ("Shouldnt be linked to self, prevSkip, insert to skip list."));
+			}
+
+			DEBUG_ASSERTCRASH(list->m_info != list->m_info->m_nextSkip, ("Shouldnt be linked to self, end of PutOnSortedOpenList."));
+		}
 		else {
 			//Move head of skips to new head
 			m_info->m_nextSkip = list->m_info->m_nextSkip;
@@ -1760,8 +1762,6 @@ PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 
 		m_info->m_nextOpen = current->m_info;
 
-		return list;
-
 	}
 	else
 	{
@@ -1770,21 +1770,6 @@ PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 		m_info->m_prevOpen = previous->m_info;
 		m_info->m_nextOpen = nullptr;
 	}
-
-	// Insert new skip level if we are going to add a new skip
-	if ((m_info->m_totalCost + m_info->m_pos.x + m_info->m_pos.y) % 4 == 0) {
-		m_info->m_nextSkip = skip->m_info->m_nextSkip;
-		if (skip->m_info->m_nextSkip != nullptr)
-			skip->m_info->m_nextSkip->m_prevSkip = this->m_info;
-
-		skip->m_info->m_nextSkip = this->m_info;
-		m_info->m_prevSkip = skip->m_info;
-
-		DEBUG_ASSERTCRASH(this->m_info != this->m_info->m_nextSkip, ("Shouldnt be linked to self, nextSkip, insert to skip list."));
-		DEBUG_ASSERTCRASH(this->m_info != this->m_info->m_prevSkip, ("Shouldnt be linked to self, prevSkip, insert to skip list."));
-	}
-
-	DEBUG_ASSERTCRASH(list->m_info != list->m_info->m_nextSkip, ("Shouldnt be linked to self, end of PutOnSortedOpenList."));
 
 	return list;
 }
