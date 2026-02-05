@@ -327,6 +327,7 @@ public:
 	static Int releaseOpenList( PathfindCell *list );
 
 	inline PathfindCell *getNextOpen(void) {return m_info->m_nextOpen?m_info->m_nextOpen->m_cell: nullptr;}
+	inline PathfindCell *getPrevOpen(void) {return m_info->m_prevOpen?m_info->m_prevOpen->m_cell: nullptr; }
 
 	inline UnsignedShort getXIndex(void) const {return m_info->m_pos.x;}
 	inline UnsignedShort getYIndex(void) const {return m_info->m_pos.y;}
@@ -386,6 +387,9 @@ private:
 	UnsignedByte m_flags : 4;                 ///< what type of units are in or moving through this cell.
 	UnsignedByte m_connectsToLayer : 4;       ///< This cell can pathfind onto this layer, if > LAYER_TOP.
 	UnsignedByte m_layer : 4;                 ///< Layer of this cell.
+
+	// Tail of open list for reverse searching
+	static PathfindCell* s_openlistTail;
 };
 
 typedef PathfindCell *PathfindCellP;

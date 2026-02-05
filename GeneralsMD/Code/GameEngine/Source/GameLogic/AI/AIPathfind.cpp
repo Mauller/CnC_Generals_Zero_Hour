@@ -1225,6 +1225,8 @@ void PathfindCellInfo::releaseACellInfo(PathfindCellInfo *theInfo)
 
 //-----------------------------------------------------------------------------------
 
+PathfindCell* PathfindCell::s_openlistTail = nullptr;
+
 /**
  * Constructor
  */
@@ -1609,7 +1611,7 @@ Bool PathfindCell::setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoo
 /**
  * Flag this cell as given type.
  */
-void PathfindCell::setType( CellType type )
+void PathfindCell::setType(CellType type)
 {
 #if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
 	if (s_useFixedPathfinding) {
@@ -1621,7 +1623,7 @@ void PathfindCell::setType( CellType type )
 	}
 
 	if (m_info && (m_info->m_obstacleID != INVALID_ID)) {
-		DEBUG_ASSERTCRASH(type==PathfindCell::CELL_OBSTACLE, ("Wrong type."));
+		DEBUG_ASSERTCRASH(type == PathfindCell::CELL_OBSTACLE, ("Wrong type."));
 		m_type = PathfindCell::CELL_OBSTACLE;
 		return;
 	}
@@ -1639,7 +1641,7 @@ void PathfindCell::setType( CellType type )
  * Unflag this cell as an obstacle, from the given one.
  * Return true if this cell was previously flagged as an obstacle by this object.
  */
-Bool PathfindCell::removeObstacle( Object *obstacle )
+Bool PathfindCell::removeObstacle(Object* obstacle)
 {
 	if (m_type == PathfindCell::CELL_RUBBLE) {
 		m_type = PathfindCell::CELL_CLEAR;
@@ -1671,64 +1673,92 @@ Bool PathfindCell::removeObstacle( Object *obstacle )
 }
 
 /// put self on "open" list in ascending cost order, return new list
-PathfindCell *PathfindCell::putOnSortedOpenList( PathfindCell *list )
+PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 {
 	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
 	DEBUG_ASSERTCRASH(m_info->m_closed==FALSE && m_info->m_open==FALSE, ("Serious error - Invalid flags. jba"));
+
+	// mark newCell as being on open list
+	m_info->m_open = true;
+	m_info->m_closed = false;
+
 	if (list == nullptr)
 	{
 		list = this;
 		m_info->m_prevOpen = nullptr;
 		m_info->m_nextOpen = nullptr;
+		s_openlistTail = nullptr;
+		return list;
 	}
-	else
-	{
-		// insertion sort
-		PathfindCell *c, *lastCell = nullptr;
-#if RETAIL_COMPATIBLE_PATHFINDING
-		// TheSuperHackers @bugfix In the retail compatible pathfinding, on rare occasions, we get stuck in an infinite loop
-		// External code should pickup on the bad behaviour and cleanup properly, but we need to explicitly break out here
-		// The fixed pathfinding does not have this issue due to the proper cleanup of pathfindCells and their pathfindCellInfos
-		UnsignedInt cellCount = 0;
-		for (c = list; c && cellCount < PATHFIND_CELLS_PER_FRAME; c = c->getNextOpen())
-		{
-			cellCount++;
-#else
-		for (c = list; c; c = c->getNextOpen())
-		{
-#endif
-			if (c->m_info->m_totalCost > m_info->m_totalCost)
-				break;
 
-			lastCell = c;
+	// insertion sort
+	PathfindCell* current = nullptr;
+	PathfindCell* previous = nullptr;
+
+	if (s_openlistTail && ( abs(s_openlistTail->m_info->m_totalCost - this->m_info->m_totalCost) < abs(list->m_info->m_totalCost - this->m_info->m_totalCost) ) ){
+
+		// reverse traverse the list
+		current = s_openlistTail;
+		while (current && current->m_info->m_totalCost > m_info->m_totalCost )
+		{
+			previous = current;
+			current = current->getPrevOpen();
 		}
 
-		if (c)
+		// Update current cell links
+		if (current)
+		{
+			current->m_info->m_nextOpen = this->m_info;
+			m_info->m_prevOpen = current->m_info;
+		}
+
+		// Update previous cells links
+		if (previous)
+		{
+			previous->m_info->m_prevOpen = this->m_info;
+			m_info->m_nextOpen = previous->m_info;
+		}
+		else {
+			// If no previous cell then we are at the end of the list and the cell to be inserted has
+			// a higher cost than the current cell
+			s_openlistTail = this;
+		}
+
+	}	else {
+
+		// Forward traverse the list
+		current = list;
+		while (current && current->m_info->m_totalCost <= m_info->m_totalCost)
+		{
+			previous = current;
+			current = current->getNextOpen();
+		}
+
+		if (current)
 		{
 			// insert just before "c"
-			if (c->m_info->m_prevOpen)
-				c->m_info->m_prevOpen->m_nextOpen = this->m_info;
-			else
+			if (current->m_info->m_prevOpen)
+				current->m_info->m_prevOpen->m_nextOpen = this->m_info;
+			else {
 				list = this;
+			}
 
-			m_info->m_prevOpen = c->m_info->m_prevOpen;
-			c->m_info->m_prevOpen = this->m_info;
+			m_info->m_prevOpen = current->m_info->m_prevOpen;
+			current->m_info->m_prevOpen = this->m_info;
 
-			m_info->m_nextOpen = c->m_info;
+			m_info->m_nextOpen = current->m_info;
 
 		}
 		else
 		{
 			// append after "lastCell" - end of list
-			lastCell->m_info->m_nextOpen = this->m_info;
-			m_info->m_prevOpen = lastCell->m_info;
+			previous->m_info->m_nextOpen = this->m_info;
+			m_info->m_prevOpen = previous->m_info;
 			m_info->m_nextOpen = nullptr;
+			s_openlistTail = this;
 		}
-	}
 
-	// mark newCell as being on open list
-	m_info->m_open = true;
-	m_info->m_closed = false;
+	}
 
 	return list;
 }
@@ -1740,6 +1770,14 @@ PathfindCell *PathfindCell::removeFromOpenList( PathfindCell *list )
 	DEBUG_ASSERTCRASH(m_info->m_closed==FALSE && m_info->m_open==TRUE, ("Serious error - Invalid flags. jba"));
 	if (m_info->m_nextOpen)
 		m_info->m_nextOpen->m_prevOpen = m_info->m_prevOpen;
+
+	// We need to move the tail back if we are removing the current tail cell
+	if (s_openlistTail == this) {
+		if (m_info->m_prevOpen)
+			s_openlistTail = m_info->m_prevOpen->m_cell;
+		else
+			s_openlistTail = nullptr;
+	}
 
 	if (m_info->m_prevOpen)
 		m_info->m_prevOpen->m_nextOpen = m_info->m_nextOpen;
