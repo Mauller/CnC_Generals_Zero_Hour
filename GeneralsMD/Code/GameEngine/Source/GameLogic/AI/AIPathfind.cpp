@@ -1121,6 +1121,8 @@ void PathfindCellInfo::forceCleanPathFindCellInfos()
 		s_infoArray[i].m_prevOpen = nullptr;
 		s_infoArray[i].m_nextSkip = nullptr;
 		s_infoArray[i].m_prevSkip = nullptr;
+		s_infoArray[i].m_nextSuperSkip = nullptr;
+		s_infoArray[i].m_prevSuperSkip = nullptr;
 		s_infoArray[i].m_open = FALSE;
 		s_infoArray[i].m_closed = FALSE;
 	}
@@ -1209,6 +1211,8 @@ PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord
 		info->m_prevOpen = nullptr;
 		info->m_nextSkip = nullptr;
 		info->m_prevSkip = nullptr;
+		info->m_nextSuperSkip = nullptr;
+		info->m_prevSuperSkip = nullptr;
 		info->m_pathParent = nullptr;
 		info->m_costSoFar = 0;
 		info->m_totalCost = 0;
@@ -1297,6 +1301,8 @@ Bool PathfindCell::startPathfind( PathfindCell *goalCell  )
 	m_info->m_prevOpen = nullptr;
 	m_info->m_nextSkip = nullptr;
 	m_info->m_prevSkip = nullptr;
+	m_info->m_nextSuperSkip = nullptr;
+	m_info->m_prevSuperSkip = nullptr;
 	m_info->m_pathParent = nullptr;
 	m_info->m_costSoFar = 0;		// start node, no cost to get here
 	m_info->m_totalCost = 0;
@@ -1416,6 +1422,7 @@ void PathfindCell::releaseInfo(void)
 	}
 
 	DEBUG_ASSERTCRASH(m_info->m_prevSkip == nullptr && m_info->m_nextSkip == nullptr, ("Shouldn't have skip links."));
+	DEBUG_ASSERTCRASH(m_info->m_prevSuperSkip == nullptr && m_info->m_nextSuperSkip == nullptr, ("Shouldn't have super skip links."));
 	DEBUG_ASSERTCRASH(m_info->m_prevOpen==nullptr && m_info->m_nextOpen==nullptr, ("Shouldn't be linked."));
 	DEBUG_ASSERTCRASH(m_info->m_open==0 && m_info->m_closed==0, ("Shouldn't be linked."));
 	DEBUG_ASSERTCRASH(m_info->m_goalUnitID==INVALID_ID && m_info->m_posUnitID==INVALID_ID, ("Shouldn't be occupied."));
@@ -1699,6 +1706,8 @@ PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 	m_info->m_closed = false;
 	m_info->m_nextSkip = nullptr;
 	m_info->m_prevSkip = nullptr;
+	m_info->m_nextSuperSkip = nullptr;
+	m_info->m_prevSuperSkip = nullptr;
 
 	if (list == nullptr)
 	{
@@ -1707,12 +1716,21 @@ PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 		m_info->m_nextOpen = nullptr;
 		m_info->m_nextSkip = nullptr;
 		m_info->m_prevSkip = nullptr;
+		m_info->m_nextSuperSkip = nullptr;
+		m_info->m_prevSuperSkip = nullptr;
 		return this;
 	}
 
 	// Traverse the skip list to find closest position
-	PathfindCell* skip = list;
+	PathfindCell* superSkip = list;
 	PathfindCell* current, * previous = nullptr;
+	// Top layer skip list traversal
+	while (superSkip->m_info->m_nextSuperSkip && superSkip->m_info->m_nextSuperSkip->m_totalCost <= m_info->m_totalCost) {
+		superSkip = superSkip->getNextSuperSkip();
+	}
+
+	PathfindCell* skip = superSkip;
+	// First layer skip list traversal
 	while (skip->m_info->m_nextSkip && skip->m_info->m_nextSkip->m_totalCost <= m_info->m_totalCost) {
 		skip = skip->getNextSkip();
 	}
@@ -1732,7 +1750,8 @@ PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 			current->m_info->m_prevOpen->m_nextOpen = this->m_info;
 
 			// Insert new skip level if we are going to add a new skip
-			if ((m_info->m_totalCost + m_info->m_pos.x + m_info->m_pos.y) % 4 == 0) {
+			Real skipRandomValue = GameClientRandomValueReal(0.0f, 1.0f);
+			if (skipRandomValue < 0.20f) {
 				m_info->m_nextSkip = skip->m_info->m_nextSkip;
 				if (skip->m_info->m_nextSkip != nullptr)
 					skip->m_info->m_nextSkip->m_prevSkip = this->m_info;
@@ -1740,11 +1759,25 @@ PathfindCell* PathfindCell::putOnSortedOpenList(PathfindCell* list)
 				skip->m_info->m_nextSkip = this->m_info;
 				m_info->m_prevSkip = skip->m_info;
 
+				// insert super skip if we are bellow the threshold
+				if (skipRandomValue < 0.05f) {
+					m_info->m_nextSuperSkip = superSkip->m_info->m_nextSuperSkip;
+					if (superSkip->m_info->m_nextSuperSkip != nullptr)
+						superSkip->m_info->m_nextSuperSkip->m_prevSuperSkip = this->m_info;
+
+					superSkip->m_info->m_nextSuperSkip = this->m_info;
+					m_info->m_prevSuperSkip = superSkip->m_info;
+
+					DEBUG_ASSERTCRASH(this->m_info != this->m_info->m_nextSuperSkip, ("Shouldnt be linked to self, nextSuperSkip, insert to skip list."));
+					DEBUG_ASSERTCRASH(this->m_info != this->m_info->m_prevSuperSkip, ("Shouldnt be linked to self, prevSuperSkip, insert to skip list."));
+				}
+
 				DEBUG_ASSERTCRASH(this->m_info != this->m_info->m_nextSkip, ("Shouldnt be linked to self, nextSkip, insert to skip list."));
 				DEBUG_ASSERTCRASH(this->m_info != this->m_info->m_prevSkip, ("Shouldnt be linked to self, prevSkip, insert to skip list."));
 			}
 
-			DEBUG_ASSERTCRASH(list->m_info != list->m_info->m_nextSkip, ("Shouldnt be linked to self, end of PutOnSortedOpenList."));
+			DEBUG_ASSERTCRASH(list->m_info != list->m_info->m_nextSkip, ("nextSkip Shouldnt be linked to self, end of PutOnSortedOpenList."));
+			DEBUG_ASSERTCRASH(list->m_info != list->m_info->m_nextSuperSkip, ("nextSuperSkip Shouldnt be linked to self, end of PutOnSortedOpenList."));
 		}
 		else {
 			//Move head of skips to new head
@@ -1802,6 +1835,19 @@ PathfindCell* PathfindCell::removeFromOpenList(PathfindCell* list)
 
 			m_info->m_nextSkip = nullptr;
 			m_info->m_prevSkip = nullptr;
+
+			//We need to do the same for the superSkip level
+			if (!m_info->m_nextOpen->m_nextSuperSkip && (m_info->m_nextSuperSkip != m_info->m_nextOpen)) {
+				m_info->m_nextOpen->m_nextSuperSkip = m_info->m_nextSuperSkip;
+				if (m_info->m_nextSuperSkip)
+					m_info->m_nextSuperSkip->m_prevSuperSkip = m_info->m_nextOpen;
+			}
+
+			// If a subsequent skip node is moved to the head then it's previous skiplink needs clearing.
+			m_info->m_nextOpen->m_prevSuperSkip = nullptr;
+
+			m_info->m_nextSuperSkip = nullptr;
+			m_info->m_prevSuperSkip = nullptr;
 		}
 
 		list = getNextOpen();
@@ -1816,11 +1862,22 @@ PathfindCell* PathfindCell::removeFromOpenList(PathfindCell* list)
 		m_info->m_prevSkip->m_nextSkip = m_info->m_nextSkip;
 	}
 
+	// Functions for inserting between super skip nodes
+	if (m_info->m_nextSuperSkip) {
+		m_info->m_nextSuperSkip->m_prevSuperSkip = m_info->m_prevSuperSkip;
+	}
+
+	if (m_info->m_prevSuperSkip) {
+		m_info->m_prevSuperSkip->m_nextSuperSkip = m_info->m_nextSuperSkip;
+	}
+
 	m_info->m_open = false;
 	m_info->m_nextOpen = nullptr;
 	m_info->m_prevOpen = nullptr;
 	m_info->m_nextSkip = nullptr;
 	m_info->m_prevSkip = nullptr;
+	m_info->m_nextSuperSkip = nullptr;
+	m_info->m_prevSuperSkip = nullptr;
 
 	return list;
 }
@@ -1857,6 +1914,8 @@ Int PathfindCell::releaseOpenList( PathfindCell *list )
 		curInfo->m_prevOpen = nullptr;
 		curInfo->m_nextSkip = nullptr;
 		curInfo->m_prevSkip = nullptr;
+		curInfo->m_nextSuperSkip = nullptr;
+		curInfo->m_prevSuperSkip = nullptr;
 		curInfo->m_open = FALSE;
 		cur->releaseInfo();
 	}
@@ -1894,6 +1953,8 @@ Int PathfindCell::releaseClosedList( PathfindCell *list )
 		curInfo->m_prevOpen = nullptr;
 		curInfo->m_nextSkip = nullptr;
 		curInfo->m_prevSkip = nullptr;
+		curInfo->m_nextSuperSkip = nullptr;
+		curInfo->m_prevSuperSkip = nullptr;
 		curInfo->m_closed = FALSE;
 		cur->releaseInfo();
 	}
@@ -1940,6 +2001,8 @@ PathfindCell *PathfindCell::removeFromClosedList( PathfindCell *list )
 	m_info->m_prevOpen = nullptr;
 	m_info->m_nextSkip = nullptr;
 	m_info->m_prevSkip = nullptr;
+	m_info->m_nextSuperSkip = nullptr;
+	m_info->m_prevSuperSkip = nullptr;
 
 	return list;
 }
