@@ -1688,9 +1688,70 @@ Bool PathfindCell::removeObstacle( Object *obstacle )
 	return true;
 }
 
+#if RETAIL_COMPATIBLE_PATHFINDING
+/// put self on "open" list in ascending cost order, return new list, Retail compatible variant
+PathfindCell* PathfindCell::putOnSortedOpenListRetailCompatible(PathfindCell* list)
+{
+	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
+	DEBUG_ASSERTCRASH(m_info->m_closed == FALSE && m_info->m_open == FALSE, ("Serious error - Invalid flags. jba"));
+
+	// mark newCell as being on open list
+	m_info->m_open = true;
+	m_info->m_closed = false;
+
+	if (list == nullptr)
+	{
+		list = this;
+		m_info->m_prevOpen = nullptr;
+		m_info->m_nextOpen = nullptr;
+		return this;
+	}
+
+	// Traverse the list to find correct position
+	PathfindCell* current = list;
+	PathfindCell* previous = nullptr;
+	int maxCells = 0;
+	while (current && maxCells < PATHFIND_CELLS_PER_FRAME && current->m_info->m_totalCost <= m_info->m_totalCost) {
+		maxCells++;
+		previous = current;
+		current = current->getNextOpen();
+	}
+
+	if (current)
+	{
+		// insert just before "c"
+		if (current->m_info->m_prevOpen)
+			current->m_info->m_prevOpen->m_nextOpen = this->m_info;
+		else
+			list = this;
+
+		m_info->m_prevOpen = current->m_info->m_prevOpen;
+		current->m_info->m_prevOpen = this->m_info;
+
+		m_info->m_nextOpen = current->m_info;
+	}
+	else
+	{
+		// append after "lastCell" - end of list
+		previous->m_info->m_nextOpen = this->m_info;
+		m_info->m_prevOpen = previous->m_info;
+		m_info->m_nextOpen = nullptr;
+	}
+
+	DEBUG_ASSERTCRASH(list->m_info != list->m_info->m_nextSkip, ("Shouldnt be linked to self, end of PutOnSortedOpenList."));
+
+	return list;
+}
+#endif
+
 /// put self on "open" list in ascending cost order, return new list
 PathfindCell *PathfindCell::putOnSortedOpenList( PathfindCell *list )
 {
+#if RETAIL_COMPATIBLE_PATHFINDING
+	if (!s_useFixedPathfinding) {
+		return putOnSortedOpenListRetailCompatible(list);
+	}
+#endif
 	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
 	DEBUG_ASSERTCRASH(m_info->m_closed==FALSE && m_info->m_open==FALSE, ("Serious error - Invalid flags. jba"));
 

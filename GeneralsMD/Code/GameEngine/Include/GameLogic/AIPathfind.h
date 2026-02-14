@@ -308,6 +308,9 @@ public:
 
 	UnsignedInt costSoFar( PathfindCell *parent );
 
+#if RETAIL_COMPATIBLE_PATHFINDING
+	PathfindCell *putOnSortedOpenListRetailCompatible(PathfindCell* list);
+#endif
 	/// put self on "open" list in ascending cost order, return new list
 	PathfindCell *putOnSortedOpenList( PathfindCell *list );
 
