@@ -33,6 +33,8 @@
 //#include "GameLogic/Locomotor.h"	// no, do not include this, unless you like long recompiles
 #include "GameLogic/LocomotorSet.h"
 
+#define SKIP_LEVELS 2
+
 #include "Pathfinder/Path.h"
 #include "Pathfinder/PathfindCell.h"
 #include "Pathfinder/PathfindCellInfo.h"

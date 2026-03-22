@@ -26,21 +26,23 @@ class PathfindCellList
 	friend class PathfindCell;
 
 public:
-	PathfindCellList() : m_head(nullptr), m_tail(nullptr) {}
+	PathfindCellList() { initList(); }
 
 #if RETAIL_COMPATIBLE_PATHFINDING
-	void reset(PathfindCell* newHead = nullptr) { m_head = newHead; m_tail = nullptr; }
+	void reset(PathfindCell* newHead = nullptr) { initList(); m_head[0] = newHead; }
 #else
-	void reset() { m_head = nullptr; m_tail = nullptr; }
+	void reset() { initList(); }
 #endif
 
-	PathfindCell* getHead() const { return m_head; }
+	PathfindCell *getHead() const { return m_head[0]; }
 
-	Bool empty() const { return m_head == nullptr; }
+	Bool empty() const { return m_head[0] == nullptr; }
 
 	Bool canReverseSort(PathfindCell& currentCell) const;
 
 private:
-	PathfindCell* m_head;
-	PathfindCell* m_tail;
+	void initList();
+
+	PathfindCell* m_head[SKIP_LEVELS];
+	PathfindCell* m_tail[SKIP_LEVELS];
 };

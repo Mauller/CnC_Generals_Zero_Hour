@@ -1084,8 +1084,10 @@ Bool s_forceCleanCells = false;
 void PathfindCellInfo::forceCleanPathFindCellInfos()
 {
 	for (Int i = 0; i < CELL_INFOS_TO_ALLOCATE - 1; i++) {
-		s_infoArray[i].m_nextOpen = nullptr;
-		s_infoArray[i].m_prevOpen = nullptr;
+		for (int j = 0; j < SKIP_LEVELS; ++j) {
+			s_infoArray[i].m_nextOpen[j] = nullptr;
+			s_infoArray[i].m_prevOpen[j] = nullptr;
+		}
 		s_infoArray[i].m_open = FALSE;
 		s_infoArray[i].m_closed = FALSE;
 	}
@@ -1172,8 +1174,10 @@ PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord
 		info->m_cell = cell;
 		info->m_pos = pos;
 
-		info->m_nextOpen = nullptr;
-		info->m_prevOpen = nullptr;
+		for (int i = 0; i < SKIP_LEVELS; ++i) {
+			info->m_nextOpen[i] = nullptr;
+			info->m_prevOpen[i] = nullptr;
+		}
 		info->m_pathParent = nullptr;
 		info->m_costSoFar = 0;
 		info->m_totalCost = 0;
@@ -1207,10 +1211,18 @@ void PathfindCellInfo::releaseACellInfo(PathfindCellInfo *theInfo)
 
 Bool PathfindCellList::canReverseSort(PathfindCell& currentCell) const
 {
-	if (m_head && m_tail)
-		return m_head->getTotalCostDifference(currentCell) > m_tail->getTotalCostDifference(currentCell);
+	if (m_head[0] && m_tail[0])
+		return m_head[0]->getTotalCostDifference(currentCell) > m_tail[0]->getTotalCostDifference(currentCell);
 
 	return false;
+}
+
+void PathfindCellList::initList()
+{
+	for (int i = 0; i < SKIP_LEVELS; ++i) {
+		m_head[i] = nullptr;
+		m_tail[i] = nullptr;
+	}
 }
 
 //-----------------------------------------------------------------------------------
@@ -1268,8 +1280,10 @@ void PathfindCell::reset()
 Bool PathfindCell::startPathfind( PathfindCell *goalCell  )
 {
 	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
-	m_info->m_nextOpen = nullptr;
-	m_info->m_prevOpen = nullptr;
+	for (int i = 0; i < SKIP_LEVELS; ++i) {
+		m_info->m_nextOpen[i] = nullptr;
+		m_info->m_prevOpen[i] = nullptr;
+	}
 	m_info->m_pathParent = nullptr;
 	m_info->m_costSoFar = 0;		// start node, no cost to get here
 	m_info->m_totalCost = 0;
@@ -1400,11 +1414,11 @@ void PathfindCell::releaseInfo()
 		return;
 	}
 
-	DEBUG_ASSERTCRASH(m_info->m_prevOpen==nullptr && m_info->m_nextOpen==nullptr, ("Shouldn't be linked."));
+	DEBUG_ASSERTCRASH(m_info->m_prevOpen[0]==nullptr && m_info->m_nextOpen[0]==nullptr, ("Shouldn't be linked."));
 	DEBUG_ASSERTCRASH(m_info->m_open==0 && m_info->m_closed==0, ("Shouldn't be linked."));
 	DEBUG_ASSERTCRASH(m_info->m_goalUnitID==INVALID_ID && m_info->m_posUnitID==INVALID_ID, ("Shouldn't be occupied."));
 	DEBUG_ASSERTCRASH(m_info->m_goalAircraftID==INVALID_ID , ("Shouldn't be occupied by aircraft."));
-	if (m_info->m_prevOpen || m_info->m_nextOpen || m_info->m_open || m_info->m_closed) {
+	if (m_info->m_prevOpen[0] || m_info->m_nextOpen[0] || m_info->m_open || m_info->m_closed) {
 		// Bad release.  Skip for now, better leak than crash.  jba.
 		return;
 	}
@@ -1683,16 +1697,16 @@ void PathfindCell::forwardInsertionSortRetailCompatible(PathfindCellList& list)
 	m_info->m_open = true;
 	m_info->m_closed = false;
 
-	if (list.m_head == nullptr)
+	if (list.m_head[0] == nullptr)
 	{
-		list.m_head = this;
-		m_info->m_prevOpen = nullptr;
-		m_info->m_nextOpen = nullptr;
+		list.m_head[0] = this;
+		m_info->m_prevOpen[0] = nullptr;
+		m_info->m_nextOpen[0] = nullptr;
 		return;
 	}
 
 	// insertion sort
-	PathfindCell* currentCell = list.m_head;
+	PathfindCell* currentCell = list.m_head[0];
 	PathfindCell* previousCell = nullptr;
 	UnsignedInt cellCount = 0;
 	while (currentCell && cellCount < PATHFIND_CELLS_PER_FRAME && currentCell->m_info->m_totalCost <= m_info->m_totalCost)
@@ -1706,29 +1720,29 @@ void PathfindCell::forwardInsertionSortRetailCompatible(PathfindCellList& list)
 
 		cellCount++;
 		previousCell = currentCell;
-		currentCell = currentCell->getNextOpen();
+		currentCell = currentCell->getNextOpen(0);
 	}
 
 	if (currentCell)
 	{
 		// insert just before "currentCell"
-		if (currentCell->m_info->m_prevOpen)
-			currentCell->m_info->m_prevOpen->m_nextOpen = this->m_info;
+		if (currentCell->m_info->m_prevOpen[0])
+			currentCell->m_info->m_prevOpen[0]->m_nextOpen[0] = this->m_info;
 		else
-			list.m_head = this;
+			list.m_head[0] = this;
 
-		m_info->m_prevOpen = currentCell->m_info->m_prevOpen;
-		currentCell->m_info->m_prevOpen = this->m_info;
+		m_info->m_prevOpen[0] = currentCell->m_info->m_prevOpen[0];
+		currentCell->m_info->m_prevOpen[0] = this->m_info;
 
-		m_info->m_nextOpen = currentCell->m_info;
+		m_info->m_nextOpen[0] = currentCell->m_info;
 
 	}
 	else
 	{
 		// append after "previousCell" - we are at the end of the list
-		previousCell->m_info->m_nextOpen = this->m_info;
-		m_info->m_prevOpen = previousCell->m_info;
-		m_info->m_nextOpen = nullptr;
+		previousCell->m_info->m_nextOpen[0] = this->m_info;
+		m_info->m_prevOpen[0] = previousCell->m_info;
+		m_info->m_nextOpen[0] = nullptr;
 	}
 }
 #endif
@@ -1743,40 +1757,42 @@ void PathfindCell::forwardInsertionSort(PathfindCellList& list)
 	m_info->m_open = true;
 	m_info->m_closed = false;
 
-	if (list.m_head == nullptr) {
-		m_info->m_prevOpen = nullptr;
-		m_info->m_nextOpen = nullptr;
-		list.m_head = this;
-		list.m_tail = this;
+	if (list.m_head[0] == nullptr) {
+		for (int i = 0; i < SKIP_LEVELS; ++i) {
+			m_info->m_prevOpen[i] = nullptr;
+			m_info->m_nextOpen[i] = nullptr;
+		}
+		list.m_head[0] = this;
+		list.m_tail[0] = this;
 		return;
 	}
 
 	// If the node needs inserting before the current list head
-	if (m_info->m_totalCost < list.m_head->m_info->m_totalCost) {
-		m_info->m_prevOpen = nullptr;
-		list.m_head->m_info->m_prevOpen = this->m_info;
-		m_info->m_nextOpen = list.m_head->m_info;
-		list.m_head = this;
+	if (m_info->m_totalCost < list.m_head[0]->m_info->m_totalCost) {
+		m_info->m_prevOpen[0] = nullptr;
+		list.m_head[0]->m_info->m_prevOpen[0] = this->m_info;
+		m_info->m_nextOpen[0] = list.m_head[0]->m_info;
+		list.m_head[0] = this;
 		return;
 	}
 
 	// Traverse the list to find correct position
-	PathfindCell* current = list.m_head;
-	while (current->m_info->m_nextOpen && current->m_info->m_nextOpen->m_totalCost <= m_info->m_totalCost) {
-		current = current->getNextOpen();
+	PathfindCell* current = list.m_head[0];
+	while (current->m_info->m_nextOpen[0] && current->m_info->m_nextOpen[0]->m_totalCost <= m_info->m_totalCost) {
+		current = current->getNextOpen(0);
 	}
 
 	// Insert the new node in the correct position
-	m_info->m_nextOpen = current->m_info->m_nextOpen;
-	if (current->m_info->m_nextOpen != nullptr) {
-		current->m_info->m_nextOpen->m_prevOpen = this->m_info;
+	m_info->m_nextOpen[0] = current->m_info->m_nextOpen[0];
+	if (current->m_info->m_nextOpen[0] != nullptr) {
+		current->m_info->m_nextOpen[0]->m_prevOpen[0] = this->m_info;
 	}
 	else {
-		list.m_tail = this;
+		list.m_tail[0] = this;
 	}
 
-	current->m_info->m_nextOpen = this->m_info;
-	m_info->m_prevOpen = current->m_info;
+	current->m_info->m_nextOpen[0] = this->m_info;
+	m_info->m_prevOpen[0] = current->m_info;
 }
 
 // Reverse insertion sort, returns early if the list is being initialized or we are appending the list
@@ -1789,40 +1805,42 @@ void PathfindCell::reverseInsertionSort(PathfindCellList& list)
 	m_info->m_open = true;
 	m_info->m_closed = false;
 
-	if (list.m_tail == nullptr) {
-		m_info->m_prevOpen = nullptr;
-		m_info->m_nextOpen = nullptr;
-		list.m_tail = this;
-		list.m_head = this;
+	if (list.m_tail[0] == nullptr) {
+		for (int i = 0; i < SKIP_LEVELS; ++i) {
+			m_info->m_prevOpen[i] = nullptr;
+			m_info->m_nextOpen[i] = nullptr;
+		}
+		list.m_tail[0] = this;
+		list.m_head[0] = this;
 		return;
 	}
 
 	// If the node needs inserting after the current list tail
-	if (m_info->m_totalCost >= list.m_tail->m_info->m_totalCost) {
-		m_info->m_prevOpen = list.m_tail->m_info;
-		list.m_tail->m_info->m_nextOpen = this->m_info;
-		m_info->m_nextOpen = nullptr;
-		list.m_tail = this;
+	if (m_info->m_totalCost >= list.m_tail[0]->m_info->m_totalCost) {
+		m_info->m_prevOpen[0] = list.m_tail[0]->m_info;
+		list.m_tail[0]->m_info->m_nextOpen[0] = this->m_info;
+		m_info->m_nextOpen[0] = nullptr;
+		list.m_tail[0] = this;
 		return;
 	}
 
 	// Traverse the list to find correct position
-	PathfindCell* current = list.m_tail;
-	while (current->m_info->m_prevOpen && current->m_info->m_prevOpen->m_totalCost > m_info->m_totalCost) {
-		current = current->getPrevOpen();
+	PathfindCell* current = list.m_tail[0];
+	while (current->m_info->m_prevOpen[0] && current->m_info->m_prevOpen[0]->m_totalCost > m_info->m_totalCost) {
+		current = current->getPrevOpen(0);
 	}
 
 	// Insert the new node in the correct position
-	m_info->m_prevOpen = current->m_info->m_prevOpen;
-	if (current->m_info->m_prevOpen != nullptr) {
-		current->m_info->m_prevOpen->m_nextOpen = this->m_info;
+	m_info->m_prevOpen[0] = current->m_info->m_prevOpen[0];
+	if (current->m_info->m_prevOpen[0] != nullptr) {
+		current->m_info->m_prevOpen[0]->m_nextOpen[0] = this->m_info;
 	}
 	else {
-		list.m_head = this;
+		list.m_head[0] = this;
 	}
 
-	current->m_info->m_prevOpen = this->m_info;
-	m_info->m_nextOpen = current->m_info;
+	current->m_info->m_prevOpen[0] = this->m_info;
+	m_info->m_nextOpen[0] = current->m_info;
 }
 
 /// put self on "open" list in ascending cost order, return new list
@@ -1851,20 +1869,22 @@ void PathfindCell::removeFromOpenList( PathfindCellList &list )
 {
 	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
 	DEBUG_ASSERTCRASH(m_info->m_closed==FALSE && m_info->m_open==TRUE, ("Serious error - Invalid flags. jba"));
-	if (m_info->m_nextOpen)
-		m_info->m_nextOpen->m_prevOpen = m_info->m_prevOpen;
+	if (m_info->m_nextOpen[0])
+		m_info->m_nextOpen[0]->m_prevOpen[0] = m_info->m_prevOpen[0];
 	else {
-		list.m_tail = getPrevOpen();
+		list.m_tail[0] = getPrevOpen(0);
 	}
 
-	if (m_info->m_prevOpen)
-		m_info->m_prevOpen->m_nextOpen = m_info->m_nextOpen;
+	if (m_info->m_prevOpen[0])
+		m_info->m_prevOpen[0]->m_nextOpen[0] = m_info->m_nextOpen[0];
 	else
-		list.m_head = getNextOpen();
+		list.m_head[0] = getNextOpen(0);
 
 	m_info->m_open = false;
-	m_info->m_nextOpen = nullptr;
-	m_info->m_prevOpen = nullptr;
+	for (int i = 0; i < SKIP_LEVELS; ++i) {
+		m_info->m_nextOpen[i] = nullptr;
+		m_info->m_prevOpen[i] = nullptr;
+	}
 
 }
 
@@ -1872,12 +1892,12 @@ void PathfindCell::removeFromOpenList( PathfindCellList &list )
 Int PathfindCell::releaseOpenList( PathfindCellList &list )
 {
 	Int count = 0;
-	while (list.m_head) {
+	while (list.m_head[0]) {
 		count++;
-		DEBUG_ASSERTCRASH(list.m_head->m_info, ("Has to have info."));
-		DEBUG_ASSERTCRASH(list.m_head->m_info->m_closed==FALSE && list.m_head->m_info->m_open==TRUE, ("Serious error - Invalid flags. jba"));
-		PathfindCell *cur = list.m_head;
-		PathfindCellInfo *curInfo = list.m_head->m_info;
+		DEBUG_ASSERTCRASH(list.m_head[0]->m_info, ("Has to have info."));
+		DEBUG_ASSERTCRASH(list.m_head[0]->m_info->m_closed==FALSE && list.m_head[0]->m_info->m_open==TRUE, ("Serious error - Invalid flags. jba"));
+		PathfindCell *cur = list.m_head[0];
+		PathfindCellInfo *curInfo = list.m_head[0]->m_info;
 
 #if RETAIL_COMPATIBLE_PATHFINDING
 		// TheSuperHackers @info This is only here to catch a crash point in the retail compatible pathfinding
@@ -1890,14 +1910,16 @@ Int PathfindCell::releaseOpenList( PathfindCellList &list )
 		}
 #endif
 
-		if (curInfo->m_nextOpen) {
-			list.m_head = curInfo->m_nextOpen->m_cell;
+		if (curInfo->m_nextOpen[0]) {
+			list.m_head[0] = curInfo->m_nextOpen[0]->m_cell;
 		} else {
 			list.reset();
 		}
 		DEBUG_ASSERTCRASH(cur == curInfo->m_cell, ("Bad backpointer in PathfindCellInfo"));
-		curInfo->m_nextOpen = nullptr;
-		curInfo->m_prevOpen = nullptr;
+		for (int i = 0; i < SKIP_LEVELS; ++i) {
+			curInfo->m_nextOpen[i] = nullptr;
+			curInfo->m_prevOpen[i] = nullptr;
+		}
 		curInfo->m_open = FALSE;
 		cur->releaseInfo();
 	}
@@ -1908,12 +1930,12 @@ Int PathfindCell::releaseOpenList( PathfindCellList &list )
 Int PathfindCell::releaseClosedList( PathfindCellList &list )
 {
 	Int count = 0;
-	while (list.m_head) {
+	while (list.m_head[0]) {
 		count++;
-		DEBUG_ASSERTCRASH(list.m_head->m_info, ("Has to have info."));
-		DEBUG_ASSERTCRASH(list.m_head->m_info->m_closed==TRUE && list.m_head->m_info->m_open==FALSE, ("Serious error - Invalid flags. jba"));
-		PathfindCell *cur = list.m_head;
-		PathfindCellInfo *curInfo = list.m_head->m_info;
+		DEBUG_ASSERTCRASH(list.m_head[0]->m_info, ("Has to have info."));
+		DEBUG_ASSERTCRASH(list.m_head[0]->m_info->m_closed==TRUE && list.m_head[0]->m_info->m_open==FALSE, ("Serious error - Invalid flags. jba"));
+		PathfindCell *cur = list.m_head[0];
+		PathfindCellInfo *curInfo = list.m_head[0]->m_info;
 #if RETAIL_COMPATIBLE_PATHFINDING
 		// TheSuperHackers @info This is only here to catch a crash point in the retail compatible pathfinding
 		// One crash mode is where a cell has no PathfindCellInfo, resulting in a nullptr access and a crash.
@@ -1925,14 +1947,14 @@ Int PathfindCell::releaseClosedList( PathfindCellList &list )
 		}
 #endif
 
-		if (curInfo->m_nextOpen) {
-			list.m_head = curInfo->m_nextOpen->m_cell;
+		if (curInfo->m_nextOpen[0]) {
+			list.m_head[0] = curInfo->m_nextOpen[0]->m_cell;
 		} else {
 			list.reset();
 		}
 		DEBUG_ASSERTCRASH(cur == curInfo->m_cell, ("Bad backpointer in PathfindCellInfo"));
-		curInfo->m_nextOpen = nullptr;
-		curInfo->m_prevOpen = nullptr;
+		curInfo->m_nextOpen[0] = nullptr;
+		curInfo->m_prevOpen[0] = nullptr;
 		curInfo->m_closed = FALSE;
 		cur->releaseInfo();
 	}
@@ -1950,9 +1972,9 @@ void PathfindCell::putOnClosedList( PathfindCellList &list )
 		m_info->m_closed = FALSE;
 		m_info->m_closed = TRUE;
 
-		m_info->m_prevOpen = nullptr;
-		m_info->m_nextOpen = list.m_head ? list.m_head->m_info : nullptr;
-		if (list.m_head)
+		m_info->m_prevOpen[0] = nullptr;
+		m_info->m_nextOpen[0] = list.m_head[0] ? list.m_head[0]->m_info : nullptr;
+		if (list.m_head[0])
 #if RETAIL_COMPATIBLE_PATHFINDING
 		// TheSuperHackers @info This is only here to catch a crash point in the retail compatible pathfinding
 		// This crash mode occurs due to the closed list head not having an m_info associated with it
@@ -1960,14 +1982,14 @@ void PathfindCell::putOnClosedList( PathfindCellList &list )
 		{
 			if (list.m_head->m_info)
 			{
-				list.m_head->m_info->m_prevOpen = this->m_info;
+				list.m_head[0]->m_info->m_prevOpen[0] = this->m_info;
 			}
 		}
 #else
-			list.m_head->m_info->m_prevOpen = this->m_info;
+			list.m_head[0]->m_info->m_prevOpen[0] = this->m_info;
 #endif
 
-		list.m_head = this;
+		list.m_head[0] = this;
 	}
 
 }
@@ -1977,17 +1999,17 @@ void PathfindCell::removeFromClosedList( PathfindCellList &list )
 {
 	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
 	DEBUG_ASSERTCRASH(m_info->m_closed==TRUE && m_info->m_open==FALSE, ("Serious error - Invalid flags. jba"));
-	if (m_info->m_nextOpen)
-		m_info->m_nextOpen->m_prevOpen = m_info->m_prevOpen;
+	if (m_info->m_nextOpen[0])
+		m_info->m_nextOpen[0]->m_prevOpen[0] = m_info->m_prevOpen[0];
 
-	if (m_info->m_prevOpen)
-		m_info->m_prevOpen->m_nextOpen = m_info->m_nextOpen;
+	if (m_info->m_prevOpen[0])
+		m_info->m_prevOpen[0]->m_nextOpen[0] = m_info->m_nextOpen[0];
 	else
-		list.m_head = getNextOpen();
+		list.m_head[0] = getNextOpen(0);
 
 	m_info->m_closed = false;
-	m_info->m_nextOpen = nullptr;
-	m_info->m_prevOpen = nullptr;
+	m_info->m_nextOpen[0] = nullptr;
+	m_info->m_prevOpen[0] = nullptr;
 
 }
 
@@ -4838,7 +4860,7 @@ void Pathfinder::debugShowSearch(  Bool pathFound  )
 		addIcon(nullptr, 0, 0, color);	 // erase.
 	}
 
-	for( s = m_openList.getHead(); s; s=s->getNextOpen() )
+	for( s = m_openList.getHead(); s; s=s->getNextOpen(0) )
 	{
 		// create objects to show path - they decay
 		RGBColor color;
@@ -4852,7 +4874,7 @@ void Pathfinder::debugShowSearch(  Bool pathFound  )
 		addIcon(&pos, PATHFIND_CELL_SIZE_F*.6f, 200, color);
 	}
 
-	for( s = m_closedList.getHead(); s; s=s->getNextOpen() )
+	for( s = m_closedList.getHead(); s; s=s->getNextOpen(0) )
 	{
 		// create objects to show path - they decay
 		RGBColor color;
@@ -8849,7 +8871,7 @@ Path *Pathfinder::findClosestPath( Object *obj, const LocomotorSet& locomotorSet
 #ifdef INTENSE_DEBUG
 			Int count = 0;
 			PathfindCell *cur;
-			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen()) {
+			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen(0)) {
 				count++;
 			}
 			if (count>1000) {
@@ -10893,7 +10915,7 @@ Path *Pathfinder::findAttackPath( const Object *obj, const LocomotorSet& locomot
 	#ifdef INTENSE_DEBUG
 				Int count = 0;
 				PathfindCell *cur;
-				for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen()) {
+				for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen(0)) {
 					count++;
 				}
 				if (count>1000) {
@@ -11169,7 +11191,7 @@ Path *Pathfinder::findSafePath( const Object *obj, const LocomotorSet& locomotor
 #ifdef INTENSE_DEBUG
 			Int count = 0;
 			PathfindCell *cur;
-			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen()) {
+			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen(0)) {
 				count++;
 			}
 			if (count>2000) {

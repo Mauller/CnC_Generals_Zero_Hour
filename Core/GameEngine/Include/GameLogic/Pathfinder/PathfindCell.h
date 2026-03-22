@@ -118,8 +118,8 @@ public:
 	/// remove all cells from closed list.
 	static Int releaseOpenList( PathfindCellList &list );
 
-	inline PathfindCell *getNextOpen() {return m_info->m_nextOpen?m_info->m_nextOpen->m_cell: nullptr;}
-	inline PathfindCell *getPrevOpen() {return m_info->m_prevOpen?m_info->m_prevOpen->m_cell: nullptr;}
+	inline PathfindCell* getNextOpen(int level) { return m_info->m_nextOpen[level] ? m_info->m_nextOpen[level]->m_cell : nullptr; }
+	inline PathfindCell* getPrevOpen(int level) { return m_info->m_prevOpen[level] ? m_info->m_prevOpen[level]->m_cell : nullptr; }
 
 	inline UnsignedShort getXIndex() const {return m_info->m_pos.x;}
 	inline UnsignedShort getYIndex() const {return m_info->m_pos.y;}
@@ -174,7 +174,7 @@ private:
 	UnsignedInt m_obstacleIsTransparent : 1;  ///< True if obstacle is transparent (undefined if obstacleid is invalid)
 
 	zoneStorageType m_zone : 14;              ///< Zone. Each zone is a set of adjacent terrain type.  If from & to in the same zone, you can successfully pathfind.  If not,
-	                                          /// you still may be able to if you can cross multiple terrain types.
+	/// you still may be able to if you can cross multiple terrain types.
 	UnsignedShort m_aircraftGoal : 1;         ///< This is an aircraft goal cell.
 	UnsignedShort m_pinched : 1;              ///< This cell is surrounded by obstacle cells.
 	UnsignedByte m_type : 4;                  ///< what type of cell terrain this is.
