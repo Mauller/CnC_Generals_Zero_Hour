@@ -59,6 +59,7 @@ enum ParticleSystemID CPP_11(: Int)
 
 #define MAX_VOLUME_PARTICLE_DEPTH ( 16 )
 #define DEFAULT_VOLUME_PARTICLE_DEPTH ( 0 )//The Default is not to do the volume thing!
+#define MIN_VOLUME_PARTICLE_DEPTH ( 2 )
 #define OPTIMUM_VOLUME_PARTICLE_DEPTH ( 6 )
 
 // TheSuperHackers @info The X and Y angles are not necessary for particles because there are only 2 placement modes:
@@ -511,7 +512,7 @@ class ParticleSystemTemplate : public MemoryPoolObject, protected ParticleSystem
 public:
 	ParticleSystemTemplate( const AsciiString &name );
 
-	AsciiString getName() const { return m_name; }
+	const AsciiString& getName() const { return m_name; }
 
 	// This function was made const because of update modules' module data being all const.
 	ParticleSystem *createSlaveSystem( Bool createSlaves = TRUE ) const ;					///< if returns non-null, it is a slave system for use
@@ -602,7 +603,7 @@ public:
 
 	void setInitialDelay( UnsignedInt delay ) { m_delayLeft = delay; }
 
-	AsciiString getParticleTypeName() { return m_particleTypeName; }	///< return the name of the particles
+	const AsciiString& getParticleTypeName() const { return m_particleTypeName; }	///< return the name of the particles
 	Bool isUsingDrawables() { return (m_particleType == DRAWABLE) ? true : false; }
 	Bool isUsingStreak() { return (m_particleType == STREAK) ? true : false; }
 	Bool isUsingSmudge() { return (m_particleType == SMUDGE) ? true : false; }
