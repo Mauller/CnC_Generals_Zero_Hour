@@ -411,6 +411,23 @@ static void Apply_Render_State(RenderStateStruct& render_state)
 
 // ----------------------------------------------------------------------------
 
+// TheSuperHackers @info Order-independent additive drawn nodes do not require sorting
+static bool node_is_additive[MAX_OVERLAPPING_NODES];
+
+static bool Sorted_Node_Is_Order_Independent(const ShaderClass& shader)
+{
+	const ShaderClass::SrcBlendFuncType src = shader.Get_Src_Blend_Func();
+	const ShaderClass::DstBlendFuncType dst = shader.Get_Dst_Blend_Func();
+	const bool additive = (dst == ShaderClass::DSTBLEND_ONE &&
+		(src == ShaderClass::SRCBLEND_ONE || src == ShaderClass::SRCBLEND_SRC_ALPHA));
+	return additive && (shader.Get_Depth_Mask() == ShaderClass::DEPTH_WRITE_DISABLE);
+}
+
+static bool Additive_Node_Less(const TempIndexStruct& a, const TempIndexStruct& b)
+{
+	return a.idx < b.idx;
+}
+
 void SortingRendererClass::Flush_Sorting_Pool()
 {
 	if (!overlapping_node_count) return;
@@ -516,6 +533,28 @@ void SortingRendererClass::Flush_Sorting_Pool()
 	}
 
 	Sort(tis, tis + overlapping_polygon_count);
+
+	// TheSuperHackers @performance Ronin/Mauller 20/08/2026 Batch additive draws
+	// Additive draws that are order independent can be batched without sorting.
+	for (unsigned n = 0; n < overlapping_node_count; ++n) {
+		node_is_additive[n] = Sorted_Node_Is_Order_Independent(overlapping_nodes[n]->sorting_state.shader);
+	}
+
+	unsigned run_start = 0;
+	while (run_start < overlapping_polygon_count) {
+		if (!node_is_additive[tis[run_start].idx]) {
+			++run_start;
+			continue;
+		}
+		unsigned run_end = run_start + 1;
+		while (run_end < overlapping_polygon_count && node_is_additive[tis[run_end].idx]) {
+			++run_end;
+		}
+		if (run_end - run_start > 1) {
+			std::stable_sort(tis + run_start, tis + run_end, Additive_Node_Less);
+		}
+		run_start = run_end;
+	}
 
 	// TheSuperHackers @fix stephanmeesters 10/06/2026
 	// Split rendering into chunks to prevent a crash when exceeding the 16-bit index buffer limit.
