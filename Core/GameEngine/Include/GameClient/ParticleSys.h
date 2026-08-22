@@ -508,6 +508,10 @@ class ParticleSystemTemplate : public MemoryPoolObject, protected ParticleSystem
 {
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE( ParticleSystemTemplate, "ParticleSystemTemplatePool" )
 
+#if PRESERVE_RETAIL_PARTICLES
+	friend INI;
+#endif
+
 public:
 	ParticleSystemTemplate( const AsciiString &name );
 
@@ -606,7 +610,7 @@ public:
 	Bool isUsingDrawables() { return (m_particleType == DRAWABLE) ? true : false; }
 	Bool isUsingStreak() { return (m_particleType == STREAK) ? true : false; }
 	Bool isUsingSmudge() { return (m_particleType == SMUDGE) ? true : false; }
-	UnsignedInt getVolumeParticleDepth() { return ( m_particleType == VOLUME_PARTICLE ) ? OPTIMUM_VOLUME_PARTICLE_DEPTH : 0; }
+	UnsignedInt getVolumeParticleDepth() { return ( m_particleType == VOLUME_PARTICLE ) ? m_volumeParticleDepth : DEFAULT_VOLUME_PARTICLE_DEPTH; }
 
 	Bool shouldBillboard() { return !m_isGroundAligned; }
 
