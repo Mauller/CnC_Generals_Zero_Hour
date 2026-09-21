@@ -24,6 +24,7 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include "Common/FramePacer.h"
 #include "Common/crc.h"
 #include "Common/GameState.h"
 #include "Common/Registry.h"
@@ -85,6 +86,7 @@ LANAPI::LANAPI() : m_transport(nullptr)
 	m_lastUpdate = 0;
 	m_transport = new Transport;
 	m_isActive = TRUE;
+	m_logicframelockhistory = FALSE;
 }
 
 LANAPI::~LANAPI()
@@ -110,29 +112,13 @@ void LANAPI::init()
 
 	m_lastGameopt = "";
 
-#if TELL_COMPUTER_IDENTITY_IN_LAN_LOBBY
-	char userName[UNLEN + 1];
-	DWORD bufSize = ARRAY_SIZE(userName);
-	if (GetUserNameA(userName, &bufSize))
-	{
-		m_userName.set(userName, bufSize - 1);
-	}
-	else
-	{
-		m_userName = "unknown";
-	}
+// Set SH Build Date
+	m_userName.format(" Exe Hash: %08x ", TheGlobalData->m_exeCRC);
+	m_hostName = " TSH_09-10-2026_NonRet ";
 
-	char computerName[MAX_COMPUTERNAME_LENGTH + 1];
-	bufSize = ARRAY_SIZE(computerName);
-	if (GetComputerNameA(computerName, &bufSize))
-	{
-		m_hostName.set(computerName, bufSize - 1);
-	}
-	else
-	{
-		m_hostName = "unknown";
-	}
-#endif
+	// Need to remember current frame pacer setting
+	m_logicframelockhistory = TheFramePacer->isLogicTimeScaleEnabled();
+
 }
 
 void LANAPI::reset()
@@ -174,6 +160,9 @@ void LANAPI::reset()
 	m_inLobby = true;
 	m_isInLANMenu = TRUE;
 	m_currentGame = nullptr;
+
+	// Need to restore the logic locking after a game
+	TheFramePacer->enableLogicTimeScale(m_logicframelockhistory);
 
 }
 

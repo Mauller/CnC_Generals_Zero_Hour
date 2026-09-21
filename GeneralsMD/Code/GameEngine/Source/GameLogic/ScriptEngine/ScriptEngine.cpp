@@ -5261,9 +5261,9 @@ void ScriptEngine::init()
 //-------------------------------------------------------------------------------------------------
 void ScriptEngine::reset()
 {
-	// setting FPS limit in case a script had changed it
+	// setting Logic FPS limit in case a script had changed it
 	if (TheFramePacer && TheGlobalData)
-		TheFramePacer->setFramesPerSecondLimit(TheGlobalData->m_framesPerSecondLimit);
+		TheFramePacer->setLogicTimeScaleFps(TheGlobalData->m_logicTimeScaleLimit);
 
 	if (TheScriptActions) {
 		TheScriptActions->reset();

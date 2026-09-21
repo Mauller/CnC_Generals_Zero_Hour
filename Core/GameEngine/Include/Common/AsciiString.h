@@ -84,8 +84,8 @@ private:
 	// add a ctor/dtor, 'cuz they won't ever be called.
 	struct AsciiStringData
 	{
-		unsigned short	m_refCount;						// reference count
-		unsigned short	m_numCharsAllocated;  // length of data allocated
+		long m_refCount;						// reference count
+		unsigned long	m_numCharsAllocated;  // length of data allocated
 		// char m_stringdata[];
 
 		char* peek() { return (char*)(this+1); }

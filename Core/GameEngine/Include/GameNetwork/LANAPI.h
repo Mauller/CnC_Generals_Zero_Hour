@@ -384,6 +384,7 @@ protected:
 	AsciiString					m_lastGameopt; /// @todo: hack for demo - remove this
 
 	Bool								m_isActive;			///< is the game currently active?
+	Bool								m_logicframelockhistory; ///< the state that the logic fps lock was before network game start.
 
 protected:
 	void sendMessage(LANMessage *msg, UnsignedInt ip = 0); // Convenience function

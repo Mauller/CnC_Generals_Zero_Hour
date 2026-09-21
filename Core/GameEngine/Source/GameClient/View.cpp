@@ -33,6 +33,9 @@
 #include "GameClient/Drawable.h"
 #include "GameClient/GameClient.h"
 #include "GameClient/View.h"
+#include "Common/Player.h"
+#include "Common/PlayerList.h"
+#include "Common/PlayerTemplate.h"
 
 UnsignedInt View::m_idNext = 1;
 
@@ -202,7 +205,13 @@ void View::setHeightAboveGround(Real z)
 	// if our zoom is limited, we will stay within a predefined distance from the terrain
 	if( m_zoomLimited )
 	{
-		m_heightAboveGround = clamp(m_minHeightAboveGround, z, m_maxHeightAboveGround);
+		Player* localPlayer = ThePlayerList->getLocalPlayer();
+		if (localPlayer && (localPlayer->isPlayerObserver() || localPlayer->isPlayerDead()) ) {
+			m_heightAboveGround = clamp(m_minHeightAboveGround, z, 2 * m_maxHeightAboveGround);
+		}
+		else {
+			m_heightAboveGround = clamp(m_minHeightAboveGround, z, m_maxHeightAboveGround);
+		}
 	}
 	else
 	{

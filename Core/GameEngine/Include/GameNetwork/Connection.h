@@ -40,7 +40,7 @@
 #include "GameNetwork/Transport.h"
 #include "GameNetwork/NetPacket.h"
 
-#define CONNECTION_LATENCY_HISTORY_LENGTH 200
+#define CONNECTION_LATENCY_HISTORY_LENGTH 40
 
 class Connection : public MemoryPoolObject
 {

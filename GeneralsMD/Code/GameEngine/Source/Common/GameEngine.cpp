@@ -666,6 +666,7 @@ void GameEngine::init()
 
 		TheSubsystemList->postProcessLoadAll();
 
+		TheFramePacer->setLogicTimeScaleFps(TheGlobalData->m_logicTimeScaleLimit);
 		TheFramePacer->setFramesPerSecondLimit(TheGlobalData->m_framesPerSecondLimit);
 
 		TheAudio->setOn(TheGlobalData->m_audioOn && TheGlobalData->m_musicOn, AudioAffect_Music);
@@ -800,6 +801,11 @@ void GameEngine::reset()
 		deleteInstance(background);
 		background = nullptr;
 	}
+
+	// Make sure to reset the FPS limit if it was altered in a skirmish game due to logic speed adjustment
+	if(TheFramePacer && TheGlobalData->m_useFpsLimit)
+		TheFramePacer->setFramesPerSecondLimit(TheGlobalData->m_framesPerSecondLimit);
+
 }
 
 /// -----------------------------------------------------------------------------------------------

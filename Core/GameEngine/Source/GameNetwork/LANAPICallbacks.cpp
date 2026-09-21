@@ -30,6 +30,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "WWLib/strtok_r.h"
+#include "Common/FramePacer.h"
 #include "Common/GameEngine.h"
 #include "Common/GlobalData.h"
 #include "Common/MessageStream.h"
@@ -232,6 +233,10 @@ void LANAPI::OnGameStart()
 		TheNetwork->initTransport();
 
 		TheNetwork->parseUserList(m_currentGame);
+
+		// Need to disable the logic locking before game start
+		m_logicframelockhistory = TheFramePacer->isLogicTimeScaleEnabled();
+		TheFramePacer->enableLogicTimeScale(FALSE);
 
 		if (TheGameLogic->isInGame())
 			TheGameLogic->clearGameData();

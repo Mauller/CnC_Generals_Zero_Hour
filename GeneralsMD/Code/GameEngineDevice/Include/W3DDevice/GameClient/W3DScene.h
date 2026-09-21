@@ -91,6 +91,7 @@ public:
 	W3DDynamicLight *getADynamicLight();
 	void setGlobalLight(LightClass *pLight,Int lightIndex=0);
 	LightEnvironmentClass &getDefaultLightEnv() {return m_defaultLightEnv;}
+	RefRenderObjListClass* getLightList() { return &LightList; }
 
 	virtual void init() override {}
 	virtual void update() override {}
