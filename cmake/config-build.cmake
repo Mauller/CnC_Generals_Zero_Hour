@@ -1,8 +1,8 @@
 # Do we want to build extra SDK stuff or just the game binary?
-option(RTS_BUILD_CORE_TOOLS "Build core tools" ON)
+option(RTS_BUILD_CORE_TOOLS "Build core tools" OFF)
 option(RTS_BUILD_CORE_EXTRAS "Build core extra tools/tests" OFF)
 option(RTS_BUILD_ZEROHOUR "Build Zero Hour code." ON)
-option(RTS_BUILD_GENERALS "Build Generals code." ON)
+option(RTS_BUILD_GENERALS "Build Generals code." OFF)
 option(RTS_BUILD_OPTION_PROFILE "Build code with the \"Profile\" configuration." OFF)
 option(RTS_BUILD_OPTION_PROFILE_TRACY "Build code with Tracy profiling enabled." OFF)
 option(RTS_BUILD_OPTION_DEBUG "Build code with the \"Debug\" configuration." OFF)
@@ -27,7 +27,7 @@ add_feature_info(FFmpegSupport RTS_BUILD_OPTION_FFMPEG "Building with FFmpeg sup
 set(RTS_BUILD_OUTPUT_SUFFIX "" CACHE STRING "Suffix appended to output names of installable targets")
 
 if(RTS_BUILD_ZEROHOUR)
-    option(RTS_BUILD_ZEROHOUR_TOOLS "Build tools for Zero Hour" ON)
+    option(RTS_BUILD_ZEROHOUR_TOOLS "Build tools for Zero Hour" OFF)
     option(RTS_BUILD_ZEROHOUR_EXTRAS "Build extra tools/tests for Zero Hour" OFF)
     option(RTS_BUILD_ZEROHOUR_DOCS "Build documentation for Zero Hour" OFF)
 
@@ -37,7 +37,7 @@ if(RTS_BUILD_ZEROHOUR)
 endif()
 
 if(RTS_BUILD_GENERALS)
-    option(RTS_BUILD_GENERALS_TOOLS "Build tools for Generals" ON)
+    option(RTS_BUILD_GENERALS_TOOLS "Build tools for Generals" OFF)
     option(RTS_BUILD_GENERALS_EXTRAS "Build extra tools/tests for Generals" OFF)
     option(RTS_BUILD_GENERALS_DOCS "Build documentation for Generals" OFF)
 

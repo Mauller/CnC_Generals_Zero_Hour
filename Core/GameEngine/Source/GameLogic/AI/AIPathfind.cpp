@@ -1265,6 +1265,7 @@ void PathfindCell::reset()
 		m_info = nullptr;
 	}
 	m_obstacleID = INVALID_ID;
+	m_skipLevel = 0;
 	m_blockedByAlly = false;
 	m_obstacleIsFence = false;
 	m_obstacleIsTransparent = false;
@@ -1767,8 +1768,39 @@ void PathfindCell::forwardInsertionSort(PathfindCellList& list)
 		return;
 	}
 
+	// For retail compat test - delete after
+	for (int i = 1; i < SKIP_LEVELS; ++i) {
+		m_info->m_prevOpen[i] = nullptr;
+		m_info->m_nextOpen[i] = nullptr;
+	}
+
+	// Select new node insertion level
+	m_skipLevel = 0;
+	Real prob = GameClientRandomValueReal(0.0f, 1.0f);
+	if (prob <= 0.2f) {
+		m_skipLevel = 1;
+	}
+
+	//if (prob <= 0.05f) {
+	//	m_skipLevel = 2;
+	//}
+
 	// If the node needs inserting before the current list head
+	int level = 0;
 	if (m_info->m_totalCost < list.m_head[0]->m_info->m_totalCost) {
+		//for (level = 0; level <= m_skipLevel; ++level) {
+		//	// Need to initialise an empty level when prepending
+		//	if (list.m_head[level] == nullptr) {
+		//		list.m_head[level] = this;
+		//		list.m_tail[level] = this;
+		//		continue;
+		//	}
+
+		//	m_info->m_prevOpen[level] = nullptr;
+		//	list.m_head[level]->m_info->m_prevOpen[level] = this->m_info;
+		//	m_info->m_nextOpen[level] = list.m_head[level]->m_info;
+		//	list.m_head[level] = this;
+		//}
 		m_info->m_prevOpen[0] = nullptr;
 		list.m_head[0]->m_info->m_prevOpen[0] = this->m_info;
 		m_info->m_nextOpen[0] = list.m_head[0]->m_info;
@@ -1777,22 +1809,41 @@ void PathfindCell::forwardInsertionSort(PathfindCellList& list)
 	}
 
 	// Traverse the list to find correct position
-	PathfindCell* current = list.m_head[0];
-	while (current->m_info->m_nextOpen[0] && current->m_info->m_nextOpen[0]->m_totalCost <= m_info->m_totalCost) {
-		current = current->getNextOpen(0);
+	PathfindCell* current = list.m_head[SKIP_LEVELS - 1];
+	PathfindCell* update[SKIP_LEVELS] = {0};
+	UnsignedInt startLevel = SKIP_LEVELS - 1;
+
+	while (current == nullptr) {
+		current = list.m_head[--startLevel];
+	}
+
+	for (level = startLevel; level >= 0; --level) {
+		while (current->m_info->m_nextOpen[level] && current->m_info->m_nextOpen[level]->m_totalCost <= m_info->m_totalCost) {
+			current = current->getNextOpen(level);
+		}
+		update[level] = current;
 	}
 
 	// Insert the new node in the correct position
-	m_info->m_nextOpen[0] = current->m_info->m_nextOpen[0];
-	if (current->m_info->m_nextOpen[0] != nullptr) {
-		current->m_info->m_nextOpen[0]->m_prevOpen[0] = this->m_info;
-	}
-	else {
-		list.m_tail[0] = this;
-	}
+	for (level = 0; level <= m_skipLevel; ++level) {
+		// Need to initialise an empty level when inserting
+		if (update[level] == nullptr) {
+			list.m_head[level] = this;
+			list.m_tail[level] = this;
+			continue;
+		}
 
-	current->m_info->m_nextOpen[0] = this->m_info;
-	m_info->m_prevOpen[0] = current->m_info;
+		m_info->m_nextOpen[level] = update[level]->m_info->m_nextOpen[level];
+		if (update[level]->m_info->m_nextOpen[level] != nullptr) {
+			update[level]->m_info->m_nextOpen[level]->m_prevOpen[level] = this->m_info;
+		}
+		else {
+			list.m_tail[level] = this;
+		}
+
+		update[level]->m_info->m_nextOpen[level] = this->m_info;
+		m_info->m_prevOpen[level] = update[level]->m_info;
+	}
 }
 
 // Reverse insertion sort, returns early if the list is being initialized or we are appending the list
@@ -1846,22 +1897,22 @@ void PathfindCell::reverseInsertionSort(PathfindCellList& list)
 /// put self on "open" list in ascending cost order, return new list
 void PathfindCell::putOnSortedOpenList( PathfindCellList &list )
 {
-#if RETAIL_COMPATIBLE_PATHFINDING
-	if (!s_useFixedPathfinding) {
-		forwardInsertionSortRetailCompatible(list);
-		return;
-	}
-#endif
-
-	// TheSuperHackers @performance Mauller 20/03/2026 Implement reverse insertion sorting.
-	// Long and complex paths often append PathfindCell's, with high total path costs, to the open list.
-	// Appending and reverse traversal allow faster insertion of these cells, reducing pathfinding overhead by 50 - 66%.
-	if (list.canReverseSort(*this)) {
-		reverseInsertionSort(list);
-	}
-	else {
+//#if RETAIL_COMPATIBLE_PATHFINDING
+//	if (!s_useFixedPathfinding) {
+//		forwardInsertionSortRetailCompatible(list);
+//		return;
+//	}
+//#endif
+//
+//	// TheSuperHackers @performance Mauller 20/03/2026 Implement reverse insertion sorting.
+//	// Long and complex paths often append PathfindCell's, with high total path costs, to the open list.
+//	// Appending and reverse traversal allow faster insertion of these cells, reducing pathfinding overhead by 50 - 66%.
+//	if (list.canReverseSort(*this)) {
+//		reverseInsertionSort(list);
+//	}
+//	else {
 		forwardInsertionSort(list);
-	}
+//	}
 }
 
 /// remove self from "open" list
@@ -1869,16 +1920,19 @@ void PathfindCell::removeFromOpenList( PathfindCellList &list )
 {
 	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
 	DEBUG_ASSERTCRASH(m_info->m_closed==FALSE && m_info->m_open==TRUE, ("Serious error - Invalid flags. jba"));
-	if (m_info->m_nextOpen[0])
-		m_info->m_nextOpen[0]->m_prevOpen[0] = m_info->m_prevOpen[0];
-	else {
-		list.m_tail[0] = getPrevOpen(0);
-	}
 
-	if (m_info->m_prevOpen[0])
-		m_info->m_prevOpen[0]->m_nextOpen[0] = m_info->m_nextOpen[0];
-	else
-		list.m_head[0] = getNextOpen(0);
+	for (int level = 0; level <= m_skipLevel; ++level) {
+		if (m_info->m_nextOpen[level])
+			m_info->m_nextOpen[level]->m_prevOpen[level] = m_info->m_prevOpen[level];
+		else {
+			list.m_tail[level] = getPrevOpen(level);
+		}
+
+		if (m_info->m_prevOpen[level])
+			m_info->m_prevOpen[level]->m_nextOpen[level] = m_info->m_nextOpen[level];
+		else
+			list.m_head[level] = getNextOpen(level);
+	}
 
 	m_info->m_open = false;
 	for (int i = 0; i < SKIP_LEVELS; ++i) {
@@ -1969,7 +2023,6 @@ void PathfindCell::putOnClosedList( PathfindCellList &list )
 	// only put on list if not already on it
 	if (m_info->m_closed == FALSE)
 	{
-		m_info->m_closed = FALSE;
 		m_info->m_closed = TRUE;
 
 		m_info->m_prevOpen[0] = nullptr;

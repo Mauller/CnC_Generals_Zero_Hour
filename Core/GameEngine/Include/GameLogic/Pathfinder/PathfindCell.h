@@ -168,6 +168,7 @@ public:
 
 private:
 	PathfindCellInfo *m_info;
+	UnsignedInt m_skipLevel;
 	ObjectID m_obstacleID;	                  ///< the object ID who overlaps this cell
 	UnsignedInt m_blockedByAlly : 1;          ///< True if this cell is blocked by an allied unit.
 	UnsignedInt m_obstacleIsFence : 1;        ///< True if occupied by a fence.
