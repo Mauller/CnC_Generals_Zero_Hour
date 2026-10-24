@@ -28,8 +28,12 @@ PathfindCellInfo *PathfindCellInfo::s_firstFree = nullptr;
 void PathfindCellInfo::forceCleanPathFindCellInfos()
 {
 	for (Int i = 0; i < CELL_INFOS_TO_ALLOCATE - 1; i++) {
-		s_infoArray[i].m_nextOpen = nullptr;
-		s_infoArray[i].m_prevOpen = nullptr;
+		for (Int j = 0; j < SKIP_LEVELS; ++i)
+		{
+			s_infoArray[i].m_nextOpen[j] = nullptr;
+			s_infoArray[i].m_prevOpen[j] = nullptr;
+		}
+
 		s_infoArray[i].m_open = FALSE;
 		s_infoArray[i].m_closed = FALSE;
 	}
@@ -85,8 +89,12 @@ PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord
 		info->m_cell = cell;
 		info->m_pos = pos;
 
-		info->m_nextOpen = nullptr;
-		info->m_prevOpen = nullptr;
+		for (Int i = 0; i < SKIP_LEVELS; ++i)
+		{
+			info->m_nextOpen[i] = nullptr;
+			info->m_prevOpen[i] = nullptr;
+		}
+
 		info->m_pathParent = nullptr;
 		info->m_costSoFar = 0;
 		info->m_totalCost = 0;

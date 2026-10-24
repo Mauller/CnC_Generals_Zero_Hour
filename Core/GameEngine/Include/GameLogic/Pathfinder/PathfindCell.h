@@ -118,8 +118,8 @@ public:
 	/// remove all cells from closed list.
 	static Int releaseOpenList( PathfindCellList &list );
 
-	PathfindCell *getNextOpen() {return m_info->m_nextOpen?m_info->m_nextOpen->m_cell: nullptr;}
-	PathfindCell *getPrevOpen() {return m_info->m_prevOpen?m_info->m_prevOpen->m_cell: nullptr;}
+	PathfindCell *getNextOpen(Int level) {return m_info->m_nextOpen[level] ? m_info->m_nextOpen[level]->m_cell : nullptr; }
+	PathfindCell *getPrevOpen(Int level) {return m_info->m_prevOpen[level] ? m_info->m_prevOpen[level]->m_cell : nullptr; }
 
 	UnsignedShort getXIndex() const {return m_info->m_pos.x;}
 	UnsignedShort getYIndex() const {return m_info->m_pos.y;}

@@ -18,6 +18,8 @@
 
 #pragma once
 
+constexpr const Int SKIP_LEVELS = 2;
+
 constexpr const Int MAX_WALL_PIECES = 128;
 constexpr const Int PATHFIND_QUEUE_LEN = 512;
 

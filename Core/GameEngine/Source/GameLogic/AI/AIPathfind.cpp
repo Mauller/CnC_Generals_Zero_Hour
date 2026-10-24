@@ -1000,7 +1000,7 @@ void Pathfinder::debugShowSearch(  Bool pathFound  )
 		addIcon(nullptr, 0, 0, color);	 // erase.
 	}
 
-	for( s = m_openList.getHead(); s; s=s->getNextOpen() )
+	for( s = m_openList.getHead(); s; s=s->getNextOpen(0) )
 	{
 		// create objects to show path - they decay
 		RGBColor color;
@@ -1014,7 +1014,7 @@ void Pathfinder::debugShowSearch(  Bool pathFound  )
 		addIcon(&pos, PATHFIND_CELL_SIZE_F*.6f, 200, color);
 	}
 
-	for( s = m_closedList.getHead(); s; s=s->getNextOpen() )
+	for( s = m_closedList.getHead(); s; s=s->getNextOpen(0) )
 	{
 		// create objects to show path - they decay
 		RGBColor color;
@@ -5034,7 +5034,7 @@ Path *Pathfinder::findClosestPath( Object *obj, const LocomotorSet& locomotorSet
 #ifdef INTENSE_DEBUG
 			Int count = 0;
 			PathfindCell *cur;
-			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen()) {
+			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen(0)) {
 				count++;
 			}
 			if (count>1000) {
@@ -7081,7 +7081,7 @@ Path *Pathfinder::findAttackPath( const Object *obj, const LocomotorSet& locomot
 	#ifdef INTENSE_DEBUG
 				Int count = 0;
 				PathfindCell *cur;
-				for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen()) {
+				for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen(0)) {
 					count++;
 				}
 				if (count>1000) {
@@ -7357,7 +7357,7 @@ Path *Pathfinder::findSafePath( const Object *obj, const LocomotorSet& locomotor
 #ifdef INTENSE_DEBUG
 			Int count = 0;
 			PathfindCell *cur;
-			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen()) {
+			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen(0)) {
 				count++;
 			}
 			if (count>2000) {
