@@ -188,6 +188,8 @@ private:
 	UnsignedByte m_flags : 4;                 ///< what type of units are in or moving through this cell.
 	UnsignedByte m_connectsToLayer : 4;       ///< This cell can pathfind onto this layer, if > LAYER_TOP.
 	UnsignedByte m_layer : 4;                 ///< Layer of this cell.
+
+	UnsignedInt m_skipLevel;
 };
 
 typedef PathfindCell *PathfindCellP;
