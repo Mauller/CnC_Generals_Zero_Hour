@@ -121,6 +121,9 @@ public:
 	PathfindCell *getNextOpen() {return m_info->m_nextOpen?m_info->m_nextOpen->m_cell: nullptr;}
 	PathfindCell *getPrevOpen() {return m_info->m_prevOpen?m_info->m_prevOpen->m_cell: nullptr;}
 
+	PathfindCell* getNextSkip() { return m_info->m_nextSkip ? m_info->m_nextSkip->m_cell : nullptr; }
+	PathfindCell* getPrevSkip() { return m_info->m_prevSkip ? m_info->m_prevSkip->m_cell : nullptr; }
+
 	UnsignedShort getXIndex() const {return m_info->m_pos.x;}
 	UnsignedShort getYIndex() const {return m_info->m_pos.y;}
 

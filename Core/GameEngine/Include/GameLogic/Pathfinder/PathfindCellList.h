@@ -26,12 +26,12 @@ class PathfindCellList
 	friend class PathfindCell;
 
 public:
-	PathfindCellList() : m_head(nullptr), m_tail(nullptr) {}
+	PathfindCellList() : m_head(nullptr), m_tail(nullptr), m_skipHead(nullptr), m_skipTail(nullptr) {}
 
 #if RETAIL_COMPATIBLE_PATHFINDING
-	void reset(PathfindCell* newHead = nullptr) { m_head = newHead; m_tail = nullptr; }
+	void reset(PathfindCell* newHead = nullptr) { m_head = newHead; m_tail = nullptr; m_skipHead = nullptr; m_skipTail = nullptr; }
 #else
-	void reset() { m_head = nullptr; m_tail = nullptr; }
+	void reset() { m_head = nullptr; m_tail = nullptr; m_skipHead = nullptr; m_skipTail = nullptr; }
 #endif
 
 	PathfindCell* getHead() const { return m_head; }
@@ -43,4 +43,6 @@ public:
 private:
 	PathfindCell* m_head;
 	PathfindCell* m_tail;
+	PathfindCell* m_skipHead;
+	PathfindCell* m_skipTail;
 };

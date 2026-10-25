@@ -38,7 +38,7 @@ protected:
 	static PathfindCellInfo *s_firstFree;							///<
 
 
-	PathfindCellInfo *m_nextOpen, *m_prevOpen;						///< for A* "open" list, shared by closed list
+	PathfindCellInfo *m_nextOpen, *m_prevOpen, *m_nextSkip, *m_prevSkip;						///< for A* "open" list, shared by closed list
 
 	PathfindCellInfo *m_pathParent;												///< "parent" cell from pathfinder
 	PathfindCell *m_cell;															///< Cell this info belongs to currently.

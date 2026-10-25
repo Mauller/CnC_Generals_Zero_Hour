@@ -78,6 +78,8 @@ Bool PathfindCell::startPathfind( PathfindCell *goalCell  )
 	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
 	m_info->m_nextOpen = nullptr;
 	m_info->m_prevOpen = nullptr;
+	m_info->m_nextSkip = nullptr;
+	m_info->m_prevSkip = nullptr;
 	m_info->m_pathParent = nullptr;
 	m_info->m_costSoFar = 0;		// start node, no cost to get here
 	m_info->m_totalCost = 0;
@@ -208,6 +210,7 @@ void PathfindCell::releaseInfo()
 		return;
 	}
 
+	DEBUG_ASSERTCRASH(m_info->m_prevSkip == nullptr && m_info->m_nextSkip == nullptr, ("Shouldn't be linked."));
 	DEBUG_ASSERTCRASH(m_info->m_prevOpen==nullptr && m_info->m_nextOpen==nullptr, ("Shouldn't be linked."));
 	DEBUG_ASSERTCRASH(m_info->m_open==0 && m_info->m_closed==0, ("Shouldn't be linked."));
 	DEBUG_ASSERTCRASH(m_info->m_goalUnitID==INVALID_ID && m_info->m_posUnitID==INVALID_ID, ("Shouldn't be occupied."));
@@ -496,6 +499,8 @@ void PathfindCell::forwardInsertionSortRetailCompatible(PathfindCellList& list)
 		list.m_head = this;
 		m_info->m_prevOpen = nullptr;
 		m_info->m_nextOpen = nullptr;
+		m_info->m_prevSkip = nullptr;
+		m_info->m_nextSkip = nullptr;
 		return;
 	}
 
@@ -554,10 +559,16 @@ void PathfindCell::forwardInsertionSort(PathfindCellList& list)
 	if (list.m_head == nullptr) {
 		m_info->m_prevOpen = nullptr;
 		m_info->m_nextOpen = nullptr;
+		m_info->m_prevSkip = nullptr;
+		m_info->m_nextSkip = nullptr;
 		list.m_head = this;
 		list.m_tail = this;
 		return;
 	}
+
+	// determine if we are adding a skip link this node
+	Real skipProb = GameClientRandomValueReal(0.0f, 1.0f);
+	Bool addSkip = skipProb <= 0.20f;
 
 	// If the node needs inserting before the current list head
 	if (m_info->m_totalCost < list.m_head->m_info->m_totalCost) {
@@ -565,11 +576,35 @@ void PathfindCell::forwardInsertionSort(PathfindCellList& list)
 		list.m_head->m_info->m_prevOpen = this->m_info;
 		m_info->m_nextOpen = list.m_head->m_info;
 		list.m_head = this;
+
+		// Update the skip level head with the new node
+		if (addSkip)
+		{
+			if (list.m_skipHead == nullptr)
+			{
+				list.m_skipHead = this;
+				list.m_skipTail = this;
+				return;
+			}
+
+			m_info->m_prevSkip = nullptr;
+			list.m_skipHead->m_info->m_prevSkip = this->m_info;
+			m_info->m_nextSkip = list.m_skipHead->m_info;
+			list.m_skipHead = this;
+		}
+
 		return;
 	}
 
-	// Traverse the list to find correct position
-	PathfindCell* current = list.m_head;
+	// Traverse the skip list to find closest position
+	PathfindCell* skip = list.m_skipHead;
+	PathfindCell* current = nullptr;
+	while (skip && skip->m_info->m_nextSkip && skip->m_info->m_nextSkip->m_totalCost < m_info->m_totalCost) {
+		skip = skip->getNextSkip();
+	}
+
+	// Traverse the list to find correct position - if we have a skip then use that otherwise start at normal head
+	current = skip ? skip : list.m_head;
 	while (current->m_info->m_nextOpen && current->m_info->m_nextOpen->m_totalCost <= m_info->m_totalCost) {
 		current = current->getNextOpen();
 	}
@@ -585,6 +620,21 @@ void PathfindCell::forwardInsertionSort(PathfindCellList& list)
 
 	current->m_info->m_nextOpen = this->m_info;
 	m_info->m_prevOpen = current->m_info;
+
+	// Insert the new skip in the correct position
+	if (skip && addSkip)
+	{
+		m_info->m_nextSkip = skip->m_info->m_nextSkip;
+		if (skip->m_info->m_nextSkip != nullptr) {
+			skip->m_info->m_nextSkip->m_prevSkip = this->m_info;
+		}
+		else {
+			list.m_skipTail = this;
+		}
+
+		skip->m_info->m_nextSkip = this->m_info;
+		m_info->m_prevSkip = skip->m_info;
+	}
 }
 
 // Reverse insertion sort, returns early if the list is being initialized or we are appending the list
@@ -600,6 +650,8 @@ void PathfindCell::reverseInsertionSort(PathfindCellList& list)
 	if (list.m_tail == nullptr) {
 		m_info->m_prevOpen = nullptr;
 		m_info->m_nextOpen = nullptr;
+		m_info->m_prevSkip = nullptr;
+		m_info->m_nextSkip = nullptr;
 		list.m_tail = this;
 		list.m_head = this;
 		return;
@@ -636,22 +688,22 @@ void PathfindCell::reverseInsertionSort(PathfindCellList& list)
 /// put self on "open" list in ascending cost order, return new list
 void PathfindCell::putOnSortedOpenList( PathfindCellList &list )
 {
-#if RETAIL_COMPATIBLE_PATHFINDING
-	if (!s_useFixedPathfinding) {
-		forwardInsertionSortRetailCompatible(list);
-		return;
-	}
-#endif
-
-	// TheSuperHackers @performance Mauller 20/03/2026 Implement reverse insertion sorting.
-	// Long and complex paths often append PathfindCell's, with high total path costs, to the open list.
-	// Appending and reverse traversal allow faster insertion of these cells, reducing pathfinding overhead by 50 - 66%.
-	if (list.canReverseSort(*this)) {
-		reverseInsertionSort(list);
-	}
-	else {
+//#if RETAIL_COMPATIBLE_PATHFINDING
+//	if (!s_useFixedPathfinding) {
+//		forwardInsertionSortRetailCompatible(list);
+//		return;
+//	}
+//#endif
+//
+//	// TheSuperHackers @performance Mauller 20/03/2026 Implement reverse insertion sorting.
+//	// Long and complex paths often append PathfindCell's, with high total path costs, to the open list.
+//	// Appending and reverse traversal allow faster insertion of these cells, reducing pathfinding overhead by 50 - 66%.
+//	if (list.canReverseSort(*this)) {
+//		reverseInsertionSort(list);
+//	}
+//	else {
 		forwardInsertionSort(list);
-	}
+	//}
 }
 
 /// remove self from "open" list
@@ -670,9 +722,26 @@ void PathfindCell::removeFromOpenList( PathfindCellList &list )
 	else
 		list.m_head = getNextOpen();
 
+	// Functions for inserting between skip nodes
+	if (m_info->m_nextSkip) {
+		m_info->m_nextSkip->m_prevSkip = m_info->m_prevSkip;
+	}
+	else {
+		list.m_skipTail = getPrevSkip();
+	}
+
+	if (m_info->m_prevSkip) {
+		m_info->m_prevSkip->m_nextSkip = m_info->m_nextSkip;
+	}
+	else {
+		list.m_skipHead = getNextSkip();
+	}
+
 	m_info->m_open = false;
 	m_info->m_nextOpen = nullptr;
 	m_info->m_prevOpen = nullptr;
+	m_info->m_nextSkip = nullptr;
+	m_info->m_prevSkip = nullptr;
 
 }
 
@@ -706,6 +775,8 @@ Int PathfindCell::releaseOpenList( PathfindCellList &list )
 		DEBUG_ASSERTCRASH(cur == curInfo->m_cell, ("Bad backpointer in PathfindCellInfo"));
 		curInfo->m_nextOpen = nullptr;
 		curInfo->m_prevOpen = nullptr;
+		curInfo->m_nextSkip = nullptr;
+		curInfo->m_prevSkip = nullptr;
 		curInfo->m_open = FALSE;
 		cur->releaseInfo();
 	}
@@ -741,6 +812,8 @@ Int PathfindCell::releaseClosedList( PathfindCellList &list )
 		DEBUG_ASSERTCRASH(cur == curInfo->m_cell, ("Bad backpointer in PathfindCellInfo"));
 		curInfo->m_nextOpen = nullptr;
 		curInfo->m_prevOpen = nullptr;
+		curInfo->m_nextSkip = nullptr;
+		curInfo->m_prevSkip = nullptr;
 		curInfo->m_closed = FALSE;
 		cur->releaseInfo();
 	}
@@ -796,6 +869,8 @@ void PathfindCell::removeFromClosedList( PathfindCellList &list )
 	m_info->m_closed = false;
 	m_info->m_nextOpen = nullptr;
 	m_info->m_prevOpen = nullptr;
+	m_info->m_nextSkip = nullptr;
+	m_info->m_prevSkip = nullptr;
 
 }
 
