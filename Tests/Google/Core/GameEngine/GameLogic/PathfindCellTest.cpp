@@ -47,7 +47,7 @@ TEST(PathfindCell, ResetPreservesCoordinatesAndClearsState)
 TEST(PathfindCell, InitializeResetsScratchOnceAndPreservesActiveState)
 {
 	PathfindCell cell, parent;
-	PathfindCellList open;
+	PathfindOpenHeap open;
 	cell.setPosition(2, 3);
 	cell.setParentCellHierarchical(&parent);
 	cell.setCostSoFar(20);
@@ -62,7 +62,7 @@ TEST(PathfindCell, InitializeResetsScratchOnceAndPreservesActiveState)
 	EXPECT_EQ(cell.getYIndex(), 3);
 	cell.setParentCellHierarchical(&parent);
 	cell.setTotalCost(42);
-	cell.putOnSortedOpenList(open);
+	cell.putOnOpenList(open);
 	cell.initializeSearchData();
 	EXPECT_EQ(open.getHead(), &cell);
 	EXPECT_TRUE(cell.getOpen());
@@ -71,41 +71,39 @@ TEST(PathfindCell, InitializeResetsScratchOnceAndPreservesActiveState)
 	PathfindCell::releaseOpenList(open);
 }
 
-TEST(PathfindCell, BothInsertionDirectionsPreservePriorityAndStableTies)
+TEST(PathfindCell, HeapPreservesPriorityAndStableTies)
 {
-	for (int reverse = 0; reverse != 2; ++reverse) {
-		PathfindCell cells[5];
-		PathfindCellList open;
-		const unsigned int total[] = {100, 100, 100, 90, 110};
-		const unsigned int progress[] = {20, 50, 50, 10, 80};
-		for (int i = 0; i != 5; ++i) {
-			cells[i].setTotalCost(total[i]);
-			cells[i].setCostSoFar(progress[i]);
-			if (reverse) cells[i].reverseInsertionSort(open);
-			else cells[i].forwardInsertionSort(open);
-		}
-		const int expected[] = {3, 1, 2, 0, 4};
-		for (int i = 0; i != 5; ++i) {
-			ASSERT_EQ(open.getHead(), &cells[expected[i]]);
-			open.getHead()->removeFromOpenList(open);
-			cells[expected[i]].clearSearchData();
-			EXPECT_FALSE(cells[expected[i]].isInitialized());
-		}
-		EXPECT_TRUE(open.empty());
+	PathfindCell cells[5];
+	PathfindOpenHeap open;
+	const unsigned int total[] = {100, 100, 100, 90, 110};
+	const unsigned int progress[] = {20, 50, 50, 10, 80};
+	for (int i = 0; i != 5; ++i) {
+		cells[i].setTotalCost(total[i]);
+		cells[i].setCostSoFar(progress[i]);
+		cells[i].putOnOpenList(open);
 	}
+	const int expected[] = {3, 1, 2, 0, 4};
+	for (int i = 0; i != 5; ++i) {
+		ASSERT_EQ(open.getHead(), &cells[expected[i]]);
+		open.getHead()->removeFromOpenList(open);
+		cells[expected[i]].clearSearchData();
+		EXPECT_FALSE(cells[expected[i]].isInitialized());
+	}
+	EXPECT_TRUE(open.empty());
 }
 
 TEST(PathfindCell, ClosedCellCanReopenAndCleanupClearsParents)
 {
 	PathfindCell parent, child;
-	PathfindCellList open, closed;
-	parent.putOnSortedOpenList(open);
+	PathfindOpenHeap open;
+	PathfindCellList closed;
+	parent.putOnOpenList(open);
 	parent.removeFromOpenList(open);
 	parent.putOnClosedList(closed);
 	child.setParentCellHierarchical(&parent);
 	child.putOnClosedList(closed);
 	child.removeFromClosedList(closed);
-	child.putOnSortedOpenList(open);
+	child.putOnOpenList(open);
 	EXPECT_EQ(PathfindCell::releaseOpenList(open), 1);
 	EXPECT_EQ(PathfindCell::releaseClosedList(closed), 1);
 	EXPECT_TRUE(open.empty());
@@ -113,8 +111,8 @@ TEST(PathfindCell, ClosedCellCanReopenAndCleanupClearsParents)
 	EXPECT_FALSE(parent.isInitialized());
 	EXPECT_FALSE(child.isInitialized());
 	EXPECT_EQ(child.getParentCell(), nullptr);
-	EXPECT_EQ(child.getNextOpen(), nullptr);
-	EXPECT_EQ(child.getPrevOpen(), nullptr);
+	EXPECT_EQ(child.getNextClosed(), nullptr);
+	EXPECT_EQ(child.getPrevClosed(), nullptr);
 }
 
 TEST(PathfindCell, OccupancySurvivesSearchCleanupAndThenClears)
@@ -145,12 +143,12 @@ TEST(PathfindCell, OccupancySurvivesSearchCleanupAndThenClears)
 TEST(PathfindCell, OccupancyChangesDoNotDamageActiveSearch)
 {
 	PathfindCell cell, parent;
-	PathfindCellList open;
+	PathfindOpenHeap open;
 	const ICoord2D pos = {0, 0};
 	cell.setGoalUnit(static_cast<ObjectID>(1), pos);
 	cell.setParentCellHierarchical(&parent);
 	cell.setTotalCost(42);
-	cell.putOnSortedOpenList(open);
+	cell.putOnOpenList(open);
 	cell.setGoalUnit(INVALID_ID, pos);
 	EXPECT_EQ(open.getHead(), &cell);
 	EXPECT_TRUE(cell.getOpen());
@@ -172,5 +170,86 @@ TEST(PathfindCell, MoreThanThirtyThousandCellsCanRemainActiveAndBeReused)
 		}
 		EXPECT_EQ(PathfindCell::releaseClosedList(closed), 30001);
 		EXPECT_TRUE(closed.empty());
+	}
+}
+
+TEST(PathfindCell, HeapMatchesReferenceAcrossMixedOperationsAndDebugTraversal)
+{
+	const int count = 257;
+	PathfindCell cells[count];
+	bool active[count] = {};
+	unsigned int sequence[count] = {};
+	unsigned int random = 12345;
+	PathfindOpenHeap open;
+	for (unsigned int step = 1; step <= 10000; ++step) {
+		random = random * 1664525u + 1013904223u;
+		const int index = (random >> 8) % count;
+		random = random * 1664525u + 1013904223u;
+		// The search currently changes costs before removing and reinserting an open cell.
+		cells[index].setTotalCost((random >> 8) % 100);
+		cells[index].setCostSoFar((random >> 16) % 50);
+		if (active[index]) cells[index].removeFromOpenList(open);
+		if ((random >> 24) & 1) {
+			cells[index].putOnOpenList(open);
+			sequence[index] = step;
+			active[index] = true;
+		} else {
+			cells[index].clearSearchData();
+			active[index] = false;
+		}
+		int best = -1;
+		unsigned int activeCount = 0;
+		for (int i = 0; i != count; ++i) {
+			EXPECT_EQ(cells[i].getOpen(), active[i]);
+			if (!active[i]) continue;
+			++activeCount;
+			if (best == -1 || cells[i].getTotalCost() < cells[best].getTotalCost() ||
+				(cells[i].getTotalCost() == cells[best].getTotalCost() &&
+				(cells[i].getCostSoFar() > cells[best].getCostSoFar() ||
+				(cells[i].getCostSoFar() == cells[best].getCostSoFar() && sequence[i] < sequence[best])))) best = i;
+		}
+		ASSERT_EQ(open.size(), activeCount);
+		ASSERT_EQ(open.getHead(), best == -1 ? nullptr : &cells[best]);
+		// This is the same non-destructive traversal used to draw the debug grid.
+		bool seen[count] = {};
+		for (UnsignedInt i = 0; i < open.size(); ++i) {
+			const int cellIndex = (int)(open.getCell(i) - cells);
+			EXPECT_TRUE(active[cellIndex]);
+			EXPECT_FALSE(seen[cellIndex]);
+			seen[cellIndex] = true;
+		}
+	}
+	while (!open.empty()) {
+		int best = -1;
+		for (int i = 0; i != count; ++i) {
+			if (!active[i]) continue;
+			if (best == -1 || cells[i].getTotalCost() < cells[best].getTotalCost() ||
+				(cells[i].getTotalCost() == cells[best].getTotalCost() &&
+				(cells[i].getCostSoFar() > cells[best].getCostSoFar() ||
+				(cells[i].getCostSoFar() == cells[best].getCostSoFar() && sequence[i] < sequence[best])))) best = i;
+		}
+		ASSERT_EQ(open.getHead(), &cells[best]);
+		cells[best].removeFromOpenList(open);
+		cells[best].clearSearchData();
+		active[best] = false;
+	}
+	cells[0].putOnOpenList(open);
+	open.reset();
+	EXPECT_TRUE(open.empty());
+	for (int i = 0; i != count; ++i) EXPECT_FALSE(cells[i].getOpen());
+}
+
+TEST(PathfindCell, HeapClearAndReuseBeyondFormerPoolLimit)
+{
+	std::vector<PathfindCell> cells(30001);
+	PathfindOpenHeap open;
+	for (int iteration = 0; iteration != 2; ++iteration) {
+		for (size_t i = 0; i != cells.size(); ++i) {
+			cells[i].setTotalCost((UnsignedInt)(i % 100));
+			cells[i].putOnOpenList(open);
+		}
+		EXPECT_EQ(PathfindCell::releaseOpenList(open), 30001);
+		EXPECT_TRUE(open.empty());
+		for (size_t i = 0; i != cells.size(); ++i) EXPECT_FALSE(cells[i].isInitialized());
 	}
 }

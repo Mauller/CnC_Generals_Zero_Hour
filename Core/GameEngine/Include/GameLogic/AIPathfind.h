@@ -347,7 +347,7 @@ private:
 	IRegion2D m_extent;														///< Grid extent limits
 	IRegion2D m_logicalExtent;										///< Logical grid extent limits
 
-	PathfindCellList m_openList;									///< Cells ready to be explored
+	PathfindOpenHeap m_openList;									///< Cells ready to be explored
 	PathfindCellList m_closedList;								///< Cells already explored
 
 	Bool m_isMapReady;														///< True if all cells of map have been classified

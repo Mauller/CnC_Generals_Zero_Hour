@@ -22,6 +22,7 @@
 
 class Object;
 class PathfindCellList;
+class PathfindOpenHeap;
 
 typedef UnsignedShort zoneStorageType;
 
@@ -33,6 +34,7 @@ typedef UnsignedShort zoneStorageType;
  */
 class PathfindCell
 {
+	friend class PathfindOpenHeap;
 public:
 
 	enum CellType
@@ -79,17 +81,11 @@ public:
 
 	UnsignedInt costSoFar( PathfindCell *parent );
 
-	// Forward insertion sort, in ascending cost order
-	void forwardInsertionSort(PathfindCellList& list);
-
-	// Reverse insertion sort, in ascending cost order
-	void reverseInsertionSort(PathfindCellList& list);
-
-	/// put self on "open" list in ascending cost order
-	void putOnSortedOpenList( PathfindCellList &list );
+	/// Insert into the open heap, lowest cost first.
+	void putOnOpenList(PathfindOpenHeap &list);
 
 	/// remove self from "open" list
-	void removeFromOpenList( PathfindCellList &list );
+	void removeFromOpenList( PathfindOpenHeap &list );
 
 	/// put self on "closed" list, return new list
 	void putOnClosedList( PathfindCellList &list );
@@ -101,10 +97,10 @@ public:
 	static Int releaseClosedList( PathfindCellList &list );
 
 	/// remove all cells from closed list.
-	static Int releaseOpenList( PathfindCellList &list );
+	static Int releaseOpenList( PathfindOpenHeap &list );
 
-	PathfindCell *getNextOpen() {return m_nextOpen;}
-	PathfindCell *getPrevOpen() {return m_prevOpen;}
+	PathfindCell *getNextClosed() {return m_nextClosed;}
+	PathfindCell *getPrevClosed() {return m_prevClosed;}
 
 	UnsignedShort getXIndex() const {return m_pos.x;}
 	UnsignedShort getYIndex() const {return m_pos.y;}
@@ -116,8 +112,6 @@ public:
 	Bool getClosed() const {return m_closed;}
 	UnsignedInt getCostSoFar() const {return m_costSoFar;}
 	UnsignedInt getTotalCost() const {return m_totalCost;}
-
-	UnsignedInt getTotalCostDifference(PathfindCell& other) const;
 
 	void setCostSoFar(UnsignedInt cost) { m_costSoFar = cost;}
 	void setTotalCost(UnsignedInt cost) { m_totalCost = cost;}
@@ -161,8 +155,10 @@ public:
 	static Bool groundCliff(const PathfindCell& targetCell, const PathfindCell& sourceCell);
 
 private:
-	// Links are shared between the open and closed lists.
-	PathfindCell *m_nextOpen, *m_prevOpen, *m_pathParent;
+	// Intrusive links are used only by the closed list.
+	PathfindCell *m_nextClosed, *m_prevClosed, *m_pathParent;
+	UnsignedInt m_heapIndex;
+	UnsignedInt64 m_openSequence;
 	UnsignedShort m_totalCost, m_costSoFar;
 	ICoord2D m_pos;
 	ObjectID m_goalUnitID, m_posUnitID, m_goalAircraftID;

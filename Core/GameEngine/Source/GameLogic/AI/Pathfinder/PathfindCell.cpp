@@ -41,8 +41,10 @@ void PathfindCell::reset()
 	m_zone = 0;
 	m_aircraftGoal = false;
 	m_pinched = false;
-	m_nextOpen = m_prevOpen = m_pathParent = nullptr;
+	m_nextClosed = m_prevClosed = m_pathParent = nullptr;
 	m_initialized = m_open = m_closed = false;
+	m_heapIndex = UINT_MAX;
+	m_openSequence = 0;
 	m_totalCost = m_costSoFar = 0;
 	m_goalUnitID = m_posUnitID = m_goalAircraftID = INVALID_ID;
 	m_obstacleID = INVALID_ID;
@@ -60,8 +62,8 @@ void PathfindCell::reset()
  */
 Bool PathfindCell::startPathfind( PathfindCell *goalCell  )
 {
-	m_nextOpen = nullptr;
-	m_prevOpen = nullptr;
+	m_nextClosed = nullptr;
+	m_prevClosed = nullptr;
 	m_pathParent = nullptr;
 	m_costSoFar = 0;		// start node, no cost to get here
 	m_totalCost = 0;
@@ -85,14 +87,6 @@ Bool PathfindCell::isBlockedByAlly() const
 void PathfindCell::setBlockedByAlly(Bool blocked)
 {
 	m_blockedByAlly = (blocked != 0);
-}
-
-/**
- * Determine absolute total path cost difference between two cells.
- */
-UnsignedInt PathfindCell::getTotalCostDifference(PathfindCell& other) const
-{
-	return abs((Int)m_totalCost - (Int)other.m_totalCost);
 }
 
 /**
@@ -128,11 +122,13 @@ void PathfindCell::clearParentCell(  )
 void PathfindCell::initializeSearchData()
 {
 	if (m_initialized) return;
-	DEBUG_ASSERTCRASH(!m_open && !m_closed && !m_nextOpen && !m_prevOpen, ("Shouldn't be linked."));
-	m_nextOpen = m_prevOpen = m_pathParent = nullptr;
+	DEBUG_ASSERTCRASH(!m_open && !m_closed && !m_nextClosed && !m_prevClosed, ("Shouldn't be linked."));
+	m_nextClosed = m_prevClosed = m_pathParent = nullptr;
 	m_open = m_closed = false;
 	m_totalCost = m_costSoFar = 0;
 	m_blockedByAlly = false;
+	m_heapIndex = UINT_MAX;
+	m_openSequence = 0;
 	m_initialized = true;
 }
 
@@ -141,7 +137,7 @@ void PathfindCell::clearSearchData()
 {
 	// Occupancy updates can occur while a search is active. Leave linked cells intact.
 	if (m_open || m_closed) return;
-	DEBUG_ASSERTCRASH(!m_nextOpen && !m_prevOpen, ("Shouldn't be linked."));
+	DEBUG_ASSERTCRASH(!m_nextClosed && !m_prevClosed, ("Shouldn't be linked."));
 	m_pathParent = nullptr;
 	if (m_flags != NO_UNITS || m_aircraftGoal) return;
 	m_initialized = false;
@@ -265,154 +261,19 @@ Bool PathfindCell::removeObstacle( Object *obstacle )
 	return true;
 }
 
-// Forward insertion sort, returns early if the list is being initialized or we are prepending the list
-void PathfindCell::forwardInsertionSort(PathfindCellList& list)
+void PathfindCell::putOnOpenList(PathfindOpenHeap &list)
 {
-	DEBUG_ASSERTCRASH(m_closed == FALSE && m_open == FALSE, ("Serious error - Invalid flags. jba"));
-
-	// mark the new cell as being on the open list
-	m_initialized = true;
-	m_open = true;
-	m_closed = false;
-
-	if (list.m_head == nullptr) {
-		m_prevOpen = nullptr;
-		m_nextOpen = nullptr;
-		list.m_head = this;
-		list.m_tail = this;
-		return;
-	}
-
-	// If the node needs inserting before the current list head
-	if (hasHigherPriorityThan(*list.m_head)) {
-		m_prevOpen = nullptr;
-		list.m_head->m_prevOpen = this;
-		m_nextOpen = list.m_head;
-		list.m_head = this;
-		return;
-	}
-
-	// Traverse the list to find correct position
-	PathfindCell* current = list.m_head;
-	while (current->m_nextOpen && !hasHigherPriorityThan(*current->m_nextOpen)) {
-		current = current->getNextOpen();
-	}
-
-	// Insert the new node in the correct position
-	m_nextOpen = current->m_nextOpen;
-	if (current->m_nextOpen != nullptr) {
-		current->m_nextOpen->m_prevOpen = this;
-	}
-	else {
-		list.m_tail = this;
-	}
-
-	current->m_nextOpen = this;
-	m_prevOpen = current;
+	list.insert(*this);
 }
 
-// Reverse insertion sort, returns early if the list is being initialized or we are appending the list
-void PathfindCell::reverseInsertionSort(PathfindCellList& list)
+void PathfindCell::removeFromOpenList(PathfindOpenHeap &list)
 {
-	DEBUG_ASSERTCRASH(m_closed == FALSE && m_open == FALSE, ("Serious error - Invalid flags. jba"));
-
-	// mark the new cell as being on the open list
-	m_initialized = true;
-	m_open = true;
-	m_closed = false;
-
-	if (list.m_tail == nullptr) {
-		m_prevOpen = nullptr;
-		m_nextOpen = nullptr;
-		list.m_tail = this;
-		list.m_head = this;
-		return;
-	}
-
-	// If the node needs inserting after the current list tail
-	if (!hasHigherPriorityThan(*list.m_tail)) {
-		m_prevOpen = list.m_tail;
-		list.m_tail->m_nextOpen = this;
-		m_nextOpen = nullptr;
-		list.m_tail = this;
-		return;
-	}
-
-	// Traverse the list to find correct position
-	PathfindCell* current = list.m_tail;
-	while (current->m_prevOpen && hasHigherPriorityThan(*current->m_prevOpen)) {
-		current = current->getPrevOpen();
-	}
-
-	// Insert the new node in the correct position
-	m_prevOpen = current->m_prevOpen;
-	if (current->m_prevOpen != nullptr) {
-		current->m_prevOpen->m_nextOpen = this;
-	}
-	else {
-		list.m_head = this;
-	}
-
-	current->m_prevOpen = this;
-	m_nextOpen = current;
+	list.remove(*this);
 }
 
-/// put self on "open" list in ascending cost order, return new list
-void PathfindCell::putOnSortedOpenList( PathfindCellList &list )
+Int PathfindCell::releaseOpenList(PathfindOpenHeap &list)
 {
-
-	// TheSuperHackers @performance Mauller 20/03/2026 Implement reverse insertion sorting.
-	// Long and complex paths often append PathfindCell's, with high total path costs, to the open list.
-	// Appending and reverse traversal allow faster insertion of these cells, reducing pathfinding overhead by 50 - 66%.
-	if (list.canReverseSort(*this)) {
-		reverseInsertionSort(list);
-	}
-	else {
-		forwardInsertionSort(list);
-	}
-}
-
-/// remove self from "open" list
-void PathfindCell::removeFromOpenList( PathfindCellList &list )
-{
-	DEBUG_ASSERTCRASH(m_closed==FALSE && m_open==TRUE, ("Serious error - Invalid flags. jba"));
-	if (m_nextOpen)
-		m_nextOpen->m_prevOpen = m_prevOpen;
-	else {
-		list.m_tail = getPrevOpen();
-	}
-
-	if (m_prevOpen)
-		m_prevOpen->m_nextOpen = m_nextOpen;
-	else
-		list.m_head = getNextOpen();
-
-	m_open = false;
-	m_nextOpen = nullptr;
-	m_prevOpen = nullptr;
-
-}
-
-/// remove all cells from "open" list
-Int PathfindCell::releaseOpenList( PathfindCellList &list )
-{
-	Int count = 0;
-	while (list.m_head) {
-		count++;
-		DEBUG_ASSERTCRASH(list.m_head->m_closed==FALSE && list.m_head->m_open==TRUE, ("Serious error - Invalid flags. jba"));
-		PathfindCell *cur = list.m_head;
-
-		if (cur->m_nextOpen) {
-			list.m_head = cur->m_nextOpen;
-		} else {
-			list.reset();
-		}
-		cur->m_nextOpen = nullptr;
-		cur->m_prevOpen = nullptr;
-		cur->m_open = FALSE;
-		cur->clearSearchData();
-	}
-	return count;
+	return list.clear();
 }
 
 /// remove all cells from "closed" list
@@ -424,13 +285,13 @@ Int PathfindCell::releaseClosedList( PathfindCellList &list )
 		DEBUG_ASSERTCRASH(list.m_head->m_closed==TRUE && list.m_head->m_open==FALSE, ("Serious error - Invalid flags. jba"));
 		PathfindCell *cur = list.m_head;
 
-		if (cur->m_nextOpen) {
-			list.m_head = cur->m_nextOpen;
+		if (cur->m_nextClosed) {
+			list.m_head = cur->m_nextClosed;
 		} else {
 			list.reset();
 		}
-		cur->m_nextOpen = nullptr;
-		cur->m_prevOpen = nullptr;
+		cur->m_nextClosed = nullptr;
+		cur->m_prevClosed = nullptr;
 		cur->m_closed = FALSE;
 		cur->clearSearchData();
 	}
@@ -447,10 +308,10 @@ void PathfindCell::putOnClosedList( PathfindCellList &list )
 		m_initialized = true;
 		m_closed = TRUE;
 
-		m_prevOpen = nullptr;
-		m_nextOpen = list.m_head;
+		m_prevClosed = nullptr;
+		m_nextClosed = list.m_head;
 		if (list.m_head)
-			list.m_head->m_prevOpen = this;
+			list.m_head->m_prevClosed = this;
 
 		list.m_head = this;
 	}
@@ -461,17 +322,17 @@ void PathfindCell::putOnClosedList( PathfindCellList &list )
 void PathfindCell::removeFromClosedList( PathfindCellList &list )
 {
 	DEBUG_ASSERTCRASH(m_closed==TRUE && m_open==FALSE, ("Serious error - Invalid flags. jba"));
-	if (m_nextOpen)
-		m_nextOpen->m_prevOpen = m_prevOpen;
+	if (m_nextClosed)
+		m_nextClosed->m_prevClosed = m_prevClosed;
 
-	if (m_prevOpen)
-		m_prevOpen->m_nextOpen = m_nextOpen;
+	if (m_prevClosed)
+		m_prevClosed->m_nextClosed = m_nextClosed;
 	else
-		list.m_head = getNextOpen();
+		list.m_head = getNextClosed();
 
 	m_closed = false;
-	m_nextOpen = nullptr;
-	m_prevOpen = nullptr;
+	m_nextClosed = nullptr;
+	m_prevClosed = nullptr;
 
 }
 

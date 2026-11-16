@@ -112,6 +112,8 @@ Pathfinder::Pathfinder() :m_blockOfMapCells(nullptr), m_map(nullptr)
 
 Pathfinder::~Pathfinder()
 {
+	PathfindCell::releaseOpenList(m_openList);
+	PathfindCell::releaseClosedList(m_closedList);
 	delete [] m_blockOfMapCells;
 	delete [] m_map;
 	deleteInstance(debugPath);
@@ -119,6 +121,8 @@ Pathfinder::~Pathfinder()
 
 void Pathfinder::reset()
 {
+	PathfindCell::releaseOpenList(m_openList);
+	PathfindCell::releaseClosedList(m_closedList);
 	frameToShowObstacles = 0;
 	DEBUG_LOG(("Pathfind cell is %d bytes", sizeof(PathfindCell)));
 
@@ -863,8 +867,9 @@ void Pathfinder::debugShowSearch(  Bool pathFound  )
 		addIcon(nullptr, 0, 0, color);	 // erase.
 	}
 
-	for( s = m_openList.getHead(); s; s=s->getNextOpen() )
+	for (UnsignedInt openIndex = 0; openIndex < m_openList.size(); ++openIndex)
 	{
+		s = m_openList.getCell(openIndex);
 		// create objects to show path - they decay
 		RGBColor color;
 		color.red = color.green = 0;
@@ -877,7 +882,7 @@ void Pathfinder::debugShowSearch(  Bool pathFound  )
 		addIcon(&pos, PATHFIND_CELL_SIZE_F*.6f, 200, color);
 	}
 
-	for( s = m_closedList.getHead(); s; s=s->getNextOpen() )
+	for( s = m_closedList.getHead(); s; s=s->getNextClosed() )
 	{
 		// create objects to show path - they decay
 		RGBColor color;
@@ -2075,7 +2080,7 @@ void Pathfinder::checkChangeLayers(PathfindCell *parentCell)
 	newCell->setCostSoFar(parentCell->getCostSoFar()); // same as parent cost
 	newCell->setTotalCost(parentCell->getTotalCost());
 	// insert newCell in open list such that open list is sorted, smallest total path cost first
-	newCell->putOnSortedOpenList( m_openList );
+	newCell->putOnOpenList( m_openList );
 }
 
 bool Pathfinder::checkCellOutsideExtents(ICoord2D& cell) {
@@ -2178,7 +2183,7 @@ struct ExamineCellsStruct
 				to->removeFromOpenList( d->thePathfinder->m_openList );
 
 			// insert to in open list such that open list is sorted, smallest total path cost first
-			to->putOnSortedOpenList( d->thePathfinder->m_openList );
+			to->putOnOpenList( d->thePathfinder->m_openList );
 	}
 
 	return 0;	// keep going
@@ -2411,7 +2416,7 @@ Int Pathfinder::examineNeighboringCells(PathfindCell *parentCell, PathfindCell *
 				newCell->removeFromOpenList( m_openList );
 
 			// insert newCell in open list such that open list is sorted, smallest total path cost first
-			newCell->putOnSortedOpenList( m_openList );
+			newCell->putOnOpenList( m_openList );
 		}
 	return cellCount;
 }
@@ -2583,7 +2588,7 @@ Path *Pathfinder::internalFindPath( Object *obj, const LocomotorSet& locomotorSe
 
 	// initialize "open" list to contain start cell
 	m_openList.reset();
-	parentCell->putOnSortedOpenList(m_openList);
+	parentCell->putOnOpenList(m_openList);
 
 	// "closed" list is initially empty
 	m_closedList.reset();
@@ -2977,7 +2982,7 @@ struct GroundCellsStruct
 			to->setTotalCost(to->getCostSoFar() + costRemaining) ;
 
 			// insert to in open list such that open list is sorted, smallest total path cost first
-			to->putOnSortedOpenList( d->thePathfinder->m_openList );
+			to->putOnOpenList( d->thePathfinder->m_openList );
 	}
 
 	return 0;	// keep going
@@ -3099,7 +3104,7 @@ Path *Pathfinder::findGroundPath( const Coord3D *from,
 
 	// initialize "open" list to contain start cell
 	m_openList.reset();
-	parentCell->putOnSortedOpenList(m_openList);
+	parentCell->putOnOpenList(m_openList);
 
 	// "closed" list is initially empty
 	m_closedList.reset();
@@ -3268,7 +3273,7 @@ Path *Pathfinder::findGroundPath( const Coord3D *from,
 				newCell->removeFromOpenList( m_openList );
 
 			// insert newCell in open list such that open list is sorted, smallest total path cost first
-			newCell->putOnSortedOpenList( m_openList );
+			newCell->putOnOpenList( m_openList );
 		}
 	}
 	// failure - goal cannot be reached
@@ -3403,7 +3408,7 @@ void Pathfinder::processHierarchicalCell( const ICoord2D &scanCell, const ICoord
 		adjNewCell->setTotalCost(adjNewCell->getCostSoFar()+remCost);
 		adjNewCell->setParentCellHierarchical(parentCell);
 		// insert newCell in open list such that open list is sorted, smallest total path cost first
-		adjNewCell->putOnSortedOpenList( m_openList );
+		adjNewCell->putOnOpenList( m_openList );
 
 
 	}
@@ -3518,7 +3523,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 
 	// initialize "open" list to contain start cell
 	m_openList.reset();
-	parentCell->putOnSortedOpenList(m_openList);
+	parentCell->putOnOpenList(m_openList);
 
 	if (parentCell->getLayer()!=LAYER_GROUND) {
 		PathfindLayerEnum layer = parentCell->getLayer();
@@ -3543,7 +3548,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 			startCell->setTotalCost(remCost);
 			startCell->setParentCellHierarchical(parentCell);
 			// insert newCell in open list such that open list is sorted, smallest total path cost first
-			startCell->putOnSortedOpenList( m_openList );
+			startCell->putOnOpenList( m_openList );
 
 			cellCount++;
 			cell->initializeSearchData();
@@ -3554,7 +3559,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 			cell->setTotalCost(remCost);
 			cell->setParentCellHierarchical(parentCell);
 			// insert newCell in open list such that open list is sorted, smallest total path cost first
-			cell->putOnSortedOpenList( m_openList );
+			cell->putOnOpenList( m_openList );
 		}
 	}
 
@@ -3654,7 +3659,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 					cell->setTotalCost(cell->getCostSoFar()+remCost);
 					cell->setParentCellHierarchical(startCell);
 					// insert newCell in open list such that open list is sorted, smallest total path cost first
-					cell->putOnSortedOpenList( m_openList );
+					cell->putOnOpenList( m_openList );
 
 				}
 			}
@@ -4218,7 +4223,7 @@ Int Pathfinder::checkPathCost(Object *obj, const LocomotorSet& locomotorSet, con
 
 	// initialize "open" list to contain start cell
 	m_openList.reset();
-	parentCell->putOnSortedOpenList(m_openList);
+	parentCell->putOnOpenList(m_openList);
 
 	// "closed" list is initially empty
 	m_closedList.reset();
@@ -4346,7 +4351,7 @@ Int Pathfinder::checkPathCost(Object *obj, const LocomotorSet& locomotorSet, con
 				newCell->removeFromOpenList( m_openList );
 
 			// insert newCell in open list such that open list is sorted, smallest total path cost first
-			newCell->putOnSortedOpenList( m_openList );
+			newCell->putOnOpenList( m_openList );
 		}
 	}
 
@@ -4497,7 +4502,7 @@ Path *Pathfinder::findClosestPath( Object *obj, const LocomotorSet& locomotorSet
 
 	// initialize "open" list to contain start cell
 	m_openList.reset();
-	parentCell->putOnSortedOpenList(m_openList);
+	parentCell->putOnOpenList(m_openList);
 
 	// "closed" list is initially empty
 	m_closedList.reset();
@@ -4532,7 +4537,7 @@ Path *Pathfinder::findClosestPath( Object *obj, const LocomotorSet& locomotorSet
 #ifdef INTENSE_DEBUG
 			Int count = 0;
 			PathfindCell *cur;
-			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen()) {
+			for (cur = m_closedList.getHead(); cur; cur=cur->getNextClosed()) {
 				count++;
 			}
 			if (count>1000) {
@@ -5975,7 +5980,7 @@ Path *Pathfinder::getMoveAwayFromPath(Object* obj, Object *otherObj,
 
 	// initialize "open" list to contain start cell
 	m_openList.reset();
-	parentCell->putOnSortedOpenList(m_openList);
+	parentCell->putOnOpenList(m_openList);
 
 	// "closed" list is initially empty
 	m_closedList.reset();
@@ -6120,7 +6125,7 @@ Path *Pathfinder::patchPath( const Object *obj, const LocomotorSet& locomotorSet
 
 	// initialize "open" list to contain start cell
 	m_openList.reset();
-	parentCell->putOnSortedOpenList(m_openList);
+	parentCell->putOnOpenList(m_openList);
 
 	// "closed" list is initially empty
 	m_closedList.reset();
@@ -6369,7 +6374,7 @@ Path *Pathfinder::findAttackPath( const Object *obj, const LocomotorSet& locomot
 
 	// initialize "open" list to contain start cell
 	m_openList.reset();
-	parentCell->putOnSortedOpenList(m_openList);
+	parentCell->putOnOpenList(m_openList);
 
 	// "closed" list is initially empty
 	m_closedList.reset();
@@ -6433,7 +6438,7 @@ Path *Pathfinder::findAttackPath( const Object *obj, const LocomotorSet& locomot
 	#ifdef INTENSE_DEBUG
 				Int count = 0;
 				PathfindCell *cur;
-				for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen()) {
+				for (cur = m_closedList.getHead(); cur; cur=cur->getNextClosed()) {
 					count++;
 				}
 				if (count>1000) {
@@ -6620,7 +6625,7 @@ Path *Pathfinder::findSafePath( const Object *obj, const LocomotorSet& locomotor
 
 	// initialize "open" list to contain start cell
 	m_openList.reset();
-	parentCell->putOnSortedOpenList(m_openList);
+	parentCell->putOnOpenList(m_openList);
 
 	// "closed" list is initially empty
 	m_closedList.reset();
@@ -6675,7 +6680,7 @@ Path *Pathfinder::findSafePath( const Object *obj, const LocomotorSet& locomotor
 #ifdef INTENSE_DEBUG
 			Int count = 0;
 			PathfindCell *cur;
-			for (cur = m_closedList.getHead(); cur; cur=cur->getNextOpen()) {
+			for (cur = m_closedList.getHead(); cur; cur=cur->getNextClosed()) {
 				count++;
 			}
 			if (count>2000) {

@@ -18,25 +18,43 @@
 
 #pragma once
 
+#include <vector>
+
 class PathfindCell;
 
-// TheSuperHackers @info The PathfindCellList class acts as a new management class for the pathfindcell open and closed lists
+// Intrusive closed list: constant-time removal when a cell is reopened.
 class PathfindCellList
 {
 	friend class PathfindCell;
-
 public:
-	PathfindCellList() : m_head(nullptr), m_tail(nullptr) {}
-
-	void reset() { m_head = nullptr; m_tail = nullptr; }
-
+	PathfindCellList() : m_head(nullptr) {}
+	void reset() { m_head = nullptr; }
 	PathfindCell* getHead() const { return m_head; }
-
 	Bool empty() const { return m_head == nullptr; }
-
-	Bool canReverseSort(PathfindCell& currentCell) const;
-
 private:
 	PathfindCell* m_head;
-	PathfindCell* m_tail;
+};
+
+// Indexed 4-ary min heap. Array order is suitable for debug traversal, not sorted traversal.
+class PathfindOpenHeap
+{
+public:
+	PathfindOpenHeap() : m_nextSequence(0) {}
+	Bool empty() const { return m_cells.empty(); }
+	UnsignedInt size() const { return (UnsignedInt)m_cells.size(); }
+	PathfindCell* getHead() const { return empty() ? nullptr : m_cells[0]; }
+	PathfindCell* getCell(UnsignedInt index) const { return m_cells[index]; }
+	void insert(PathfindCell& cell);
+	void remove(PathfindCell& cell);
+	Int clear();
+	void reset();
+
+private:
+	PathfindOpenHeap(const PathfindOpenHeap&);
+	PathfindOpenHeap& operator=(const PathfindOpenHeap&);
+	Bool precedes(const PathfindCell* a, const PathfindCell* b) const;
+	void siftUp(UnsignedInt index);
+	void siftDown(UnsignedInt index);
+	std::vector<PathfindCell*> m_cells;
+	UnsignedInt64 m_nextSequence;
 };
