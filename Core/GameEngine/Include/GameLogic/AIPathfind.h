@@ -250,7 +250,7 @@ protected:
 																PathfindCell *parentCell,
 																PathfindCell *goalCell, zoneStorageType parentZone,
 																zoneStorageType *examinedZones, Int &numExZones,
-																Bool crusher, Int &cellCount);
+																LocomotorSurfaceTypeMask locomotorSurface, Bool crusher, Int &cellCount);
 	Bool checkForAdjust(Object *, const LocomotorSet& locomotorSet, Bool isHuman, Int cellX, Int cellY,
 		PathfindLayerEnum layer, Int iRadius, Bool center,Coord3D *dest, const Coord3D *groupDest) ;
 	Bool checkForLanding(Int cellX, Int cellY,
@@ -329,7 +329,7 @@ protected:
 	void  prependCells( Path *path, const Coord3D *fromPos,
 																	PathfindCell *goalCell, Bool center ); ///< Add pathfind cells to a path.
 
-	void debugShowSearch( Bool pathFound );				///< Show all cells touched in the last search
+	void debugShowSearch(Bool pathFound, Bool hierarchical = false);				///< Show all cells touched in the last search
 	static LocomotorSurfaceTypeMask validLocomotorSurfacesForCellType(PathfindCell::CellType t);
 
 	void checkChangeLayers(PathfindCell *parentCell);

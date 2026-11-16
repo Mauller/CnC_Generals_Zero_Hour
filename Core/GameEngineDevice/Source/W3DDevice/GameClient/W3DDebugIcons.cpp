@@ -174,8 +174,8 @@ void W3DDebugIcons::compressIconsArray()
 		Int newNum = 0;
 		Int i;
 		for (i=0; i<m_numDebugIcons; i++) {
-			if (m_debugIcons[i].endFrame >= TheGameLogic->getFrame() && i>newNum) {
-				m_debugIcons[newNum] = m_debugIcons[i];
+			if (m_debugIcons[i].endFrame > TheGameLogic->getFrame()) {
+				if (i != newNum) m_debugIcons[newNum] = m_debugIcons[i];
 				newNum++;
 			}
 		}

@@ -851,7 +851,7 @@ void Pathfinder::forceMapRecalculation()
 /**
  * Show all cells touched in the last search
  */
-void Pathfinder::debugShowSearch(  Bool pathFound  )
+void Pathfinder::debugShowSearch(Bool pathFound, Bool hierarchical)
 {
 	if (!TheGlobalData->m_debugAI) {
 		return;
@@ -863,13 +863,54 @@ void Pathfinder::debugShowSearch(  Bool pathFound  )
 	PathfindCell *s;
 	RGBColor color;
 	color.red = color.blue = color.green = 1;
-	if (!pathFound) {
-		addIcon(nullptr, 0, 0, color);	 // erase.
+	// Show the latest search, rather than accumulating coarse and detailed overlays.
+	addIcon(nullptr, 0, 0, color);
+
+	if (hierarchical) {
+		// The coarse frontier contains boundary samples, not every cell in a searched block.
+		ICoord2D extent;
+		m_zoneManager.getExtent(extent);
+		std::vector<UnsignedByte> blocks(extent.x * extent.y, 0);
+		for (UnsignedInt i = 0; i < m_openList.size(); ++i) {
+			PathfindCell* cell = m_openList.getCell(i);
+			if (cell->getLayer() != LAYER_GROUND) continue;
+			const Int bx = cell->getXIndex() / PathfindZoneManager::ZONE_BLOCK_SIZE;
+			const Int by = cell->getYIndex() / PathfindZoneManager::ZONE_BLOCK_SIZE;
+			blocks[by * extent.x + bx] |= 1;
+		}
+		for (PathfindCell* cell = m_closedList.getHead(); cell; cell = cell->getNextClosed()) {
+			if (cell->getLayer() != LAYER_GROUND) continue;
+			const Int bx = cell->getXIndex() / PathfindZoneManager::ZONE_BLOCK_SIZE;
+			const Int by = cell->getYIndex() / PathfindZoneManager::ZONE_BLOCK_SIZE;
+			blocks[by * extent.x + bx] |= 2;
+		}
+		for (Int by = 0; by < extent.y; ++by) {
+			for (Int bx = 0; bx < extent.x; ++bx) {
+				const UnsignedByte state = blocks[by * extent.x + bx];
+				if (!state) continue;
+				color.red = (state & 2) ? 1.0f : 0.0f;
+				color.green = 0.0f;
+				color.blue = (!pathFound && (state & 2)) ? 0.0f : 1.0f;
+				for (Int y = by * PathfindZoneManager::ZONE_BLOCK_SIZE;
+					y < (by + 1) * PathfindZoneManager::ZONE_BLOCK_SIZE && y <= m_extent.hi.y; ++y) {
+					for (Int x = bx * PathfindZoneManager::ZONE_BLOCK_SIZE;
+						x < (bx + 1) * PathfindZoneManager::ZONE_BLOCK_SIZE && x <= m_extent.hi.x; ++x) {
+						if (x < m_extent.lo.x || y < m_extent.lo.y) continue;
+						Coord3D pos;
+						pos.x = (x + 0.5f) * PATHFIND_CELL_SIZE_F;
+						pos.y = (y + 0.5f) * PATHFIND_CELL_SIZE_F;
+						pos.z = TheTerrainLogic->getLayerHeight(pos.x, pos.y, LAYER_GROUND) + 0.5f;
+						addIcon(&pos, PATHFIND_CELL_SIZE_F * 0.8f, pathFound ? 200 : 400, color);
+					}
+				}
+			}
+		}
 	}
 
 	for (UnsignedInt openIndex = 0; openIndex < m_openList.size(); ++openIndex)
 	{
 		s = m_openList.getCell(openIndex);
+		if (hierarchical && s->getLayer() == LAYER_GROUND) continue;
 		// create objects to show path - they decay
 		RGBColor color;
 		color.red = color.green = 0;
@@ -884,6 +925,7 @@ void Pathfinder::debugShowSearch(  Bool pathFound  )
 
 	for( s = m_closedList.getHead(); s; s=s->getNextClosed() )
 	{
+		if (hierarchical && s->getLayer() == LAYER_GROUND) continue;
 		// create objects to show path - they decay
 		RGBColor color;
 		color.red = color.blue = 1;
@@ -2852,6 +2894,10 @@ Path *Pathfinder::buildHierarchicalPath( const Coord3D *fromPos, PathfindCell *g
 	ICoord2D cellNdxMin, cellNdxMax;
 	worldToCell(&minPos, &cellNdxMin);
 	worldToCell(&maxPos, &cellNdxMax);
+	if (cellNdxMin.x < m_extent.lo.x) cellNdxMin.x = m_extent.lo.x;
+	if (cellNdxMin.y < m_extent.lo.y) cellNdxMin.y = m_extent.lo.y;
+	if (cellNdxMax.x > m_extent.hi.x) cellNdxMax.x = m_extent.hi.x;
+	if (cellNdxMax.y > m_extent.hi.y) cellNdxMax.y = m_extent.hi.y;
 	Int i, j;
 	for (i=cellNdxMin.x; i<=cellNdxMax.x; i++) {
 		for (j=cellNdxMin.y; j<=cellNdxMax.y; j++) {
@@ -3336,7 +3382,7 @@ Path *Pathfinder::findGroundPath( const Coord3D *from,
 void Pathfinder::processHierarchicalCell( const ICoord2D &scanCell, const ICoord2D &delta, PathfindCell *parentCell,
 																				 PathfindCell *goalCell, zoneStorageType parentZone,
 																				 zoneStorageType *examinedZones, Int &numExZones,
-																				 Bool crusher, Int &cellCount)
+																				 LocomotorSurfaceTypeMask locomotorSurface, Bool crusher, Int &cellCount)
 {
 	if (scanCell.x<m_extent.lo.x || scanCell.x>m_extent.hi.x ||
 		scanCell.y<m_extent.lo.y || scanCell.y>m_extent.hi.y) {
@@ -3345,20 +3391,15 @@ void Pathfinder::processHierarchicalCell( const ICoord2D &scanCell, const ICoord
 	if (parentZone == PathfindZoneManager::UNINITIALIZED_ZONE) {
 		return;
 	}
-	if (parentZone == m_zoneManager.getBlockZone(LOCOMOTORSURFACE_GROUND,
+	if (parentZone == m_zoneManager.getBlockZone(locomotorSurface,
 		crusher, scanCell.x, scanCell.y, m_map)) {
 		PathfindCell *newCell = getCell(LAYER_GROUND, scanCell.x, scanCell.y);
-		if( !newCell->isInitialized() )
-		{
- 			return;
-		}
 
-		if( newCell->getOpen() || newCell->getClosed() )
+		// The current parent may itself be the only crossing on this side of the block.
+		if (newCell != parentCell && (newCell->getOpen() || newCell->getClosed()))
 			return; // already looked at this one.
 
 		ICoord2D adjacentCell = scanCell;
-		//DEBUG_ASSERTCRASH(parentZone==newCell->getZone(), ("Different zones?"));
-		if (parentZone!=newCell->getZone()) return;
 		adjacentCell.x += delta.x;
 		adjacentCell.y += delta.y;
 		if (adjacentCell.x<m_extent.lo.x || adjacentCell.x>m_extent.hi.x ||
@@ -3367,12 +3408,12 @@ void Pathfinder::processHierarchicalCell( const ICoord2D &scanCell, const ICoord
 		}
 		PathfindCell *adjNewCell = getCell(LAYER_GROUND, adjacentCell.x, adjacentCell.y);
 		if ((adjNewCell->getOpen() || adjNewCell->getClosed())) return; // already looked at this one.
-		zoneStorageType parentGlobalZone = m_zoneManager.getEffectiveZone(LOCOMOTORSURFACE_GROUND, crusher, parentZone);
+		zoneStorageType parentGlobalZone = m_zoneManager.getEffectiveZone(locomotorSurface, crusher, parentZone);
 
 		/// @todo - somehow out of bounds or bogus newZone.
-		zoneStorageType newZone = m_zoneManager.getBlockZone(LOCOMOTORSURFACE_GROUND,
+		zoneStorageType newZone = m_zoneManager.getBlockZone(locomotorSurface,
 							crusher, adjacentCell.x, adjacentCell.y, m_map);
-		zoneStorageType newGlobalZone = m_zoneManager.getEffectiveZone(LOCOMOTORSURFACE_GROUND, crusher, newZone);
+		zoneStorageType newGlobalZone = m_zoneManager.getEffectiveZone(locomotorSurface, crusher, newZone);
 		if (newGlobalZone != parentGlobalZone) {
 			return; // can't step over. jba.
 		}
@@ -3388,7 +3429,8 @@ void Pathfinder::processHierarchicalCell( const ICoord2D &scanCell, const ICoord
 			return;
 		}
 
-		{
+		if (newCell != parentCell) {
+			newCell->initializeSearchData();
 			newCell->putOnClosedList(m_closedList);
 		}
 
@@ -3480,6 +3522,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 	PathfindLayerEnum layer = TheTerrainLogic->getLayerForDestination(from);
 	PathfindCell *parentCell = getClippedCell( layer,&clipFrom );
 	if (!parentCell) {
+		goalCell->clearSearchData();
 		return nullptr;
 	}
 
@@ -3491,8 +3534,8 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 
 	Int zone1, zone2;
 	// m_isCrusher = false;
-	zone1 = m_zoneManager.getEffectiveZone(locomotorSurface, false, parentCell->getZone());
-	zone2 =  m_zoneManager.getEffectiveZone(locomotorSurface, false, goalCell->getZone());
+	zone1 = m_zoneManager.getEffectiveZone(locomotorSurface, crusher, parentCell->getZone());
+	zone2 =  m_zoneManager.getEffectiveZone(locomotorSurface, crusher, goalCell->getZone());
 
 	if ( zone1 != zone2) {
 		goalCell->clearSearchData();
@@ -3545,7 +3588,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 			Int curCost = startCell->costToHierGoal(parentCell);
 			Int remCost = startCell->costToHierGoal(goalCell);
 			startCell->setCostSoFar(curCost);
-			startCell->setTotalCost(remCost);
+			startCell->setTotalCost(startCell->getCostSoFar() + remCost);
 			startCell->setParentCellHierarchical(parentCell);
 			// insert newCell in open list such that open list is sorted, smallest total path cost first
 			startCell->putOnOpenList( m_openList );
@@ -3556,7 +3599,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 			curCost = cell->costToHierGoal(parentCell);
 			remCost = cell->costToHierGoal(goalCell);
 			cell->setCostSoFar(curCost);
-			cell->setTotalCost(remCost);
+			cell->setTotalCost(cell->getCostSoFar() + remCost);
 			cell->setParentCellHierarchical(parentCell);
 			// insert newCell in open list such that open list is sorted, smallest total path cost first
 			cell->putOnOpenList( m_openList );
@@ -3679,7 +3722,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 			Bool show = TheGlobalData->m_debugAI==AI_DEBUG_PATHS;
 			show |= (TheGlobalData->m_debugAI==AI_DEBUG_GROUND_PATHS);
 			if (show)	{
-				debugShowSearch(true);
+				debugShowSearch(true, true);
 			}
 #endif
 			{
@@ -3724,127 +3767,87 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 		Int numExZones = 0;
 		// Left side.
 		if (blockX>0) {
-			for (i=1; i<=PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
+			for (i=0; i<PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
 			ICoord2D scanCell;
 				scanCell.x = blockX*PathfindZoneManager::ZONE_BLOCK_SIZE;
 				scanCell.y = (blockY*PathfindZoneManager::ZONE_BLOCK_SIZE);
 				scanCell.y += PathfindZoneManager::ZONE_BLOCK_SIZE/2;
-				Int offset = i>>1;
-				if (i&1) offset = -offset;
+				const Int offset = hierarchicalBoundaryOffset(i);
 				scanCell.y += offset;
 				ICoord2D delta;
 				delta.x = -1; // left side moves -1.
 				delta.y = 0;
 
-				PathfindCell *cell = getCell(LAYER_GROUND, scanCell.x, scanCell.y);
-				if (!cell)
-					continue;
-
-				if ( (cell->getClosed() || cell->getOpen()) ) {
-					if (parentZone == m_zoneManager.getBlockZone(locomotorSurface, crusher, scanCell.x, scanCell.y, m_map))
-						break;
-				}
-
 				if (isHuman && checkCellOutsideExtents(scanCell))
 					continue;
 
 				processHierarchicalCell(scanCell, delta, parentCell,
-					goalCell, parentZone, examinedZones, numExZones, crusher, cellCount);
+					goalCell, parentZone, examinedZones, numExZones, locomotorSurface, crusher, cellCount);
 			}
 		}
 		// Right side.
 		if (blockX<zoneBlockExtent.x-1) {
 			numExZones = 0;
-			for (i=1; i<=PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
+			for (i=0; i<PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
 			ICoord2D scanCell;
 				scanCell.x = blockX*PathfindZoneManager::ZONE_BLOCK_SIZE;
 				scanCell.x += PathfindZoneManager::ZONE_BLOCK_SIZE-1;
 				scanCell.y = (blockY*PathfindZoneManager::ZONE_BLOCK_SIZE);
 				scanCell.y += PathfindZoneManager::ZONE_BLOCK_SIZE/2;
-				Int offset = i>>1;
-				if (i&1) offset = -offset;
+				const Int offset = hierarchicalBoundaryOffset(i);
 				scanCell.y += offset;
 				ICoord2D delta;
 				delta.x = 1; // right side moves +1.
 				delta.y = 0;
 
-				PathfindCell *cell = getCell(LAYER_GROUND, scanCell.x, scanCell.y);
-				if (!cell)
-					continue;
-
-				if ( (cell->getClosed() || cell->getOpen()) ) {
-					if (parentZone == m_zoneManager.getBlockZone(locomotorSurface, crusher, scanCell.x, scanCell.y, m_map))
-						break;
-				}
-
 				if (isHuman && checkCellOutsideExtents(scanCell))
 					continue;
 
 				processHierarchicalCell(scanCell, delta, parentCell,
-					goalCell, parentZone, examinedZones, numExZones, crusher, cellCount);
+					goalCell, parentZone, examinedZones, numExZones, locomotorSurface, crusher, cellCount);
 			}
 		}
 		// Top side.
 		if (blockY>0) {
 			numExZones = 0;
-			for (i=1; i<=PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
+			for (i=0; i<PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
 			ICoord2D scanCell;
 				scanCell.y = blockY*PathfindZoneManager::ZONE_BLOCK_SIZE;
 				scanCell.x = (blockX*PathfindZoneManager::ZONE_BLOCK_SIZE);
 				scanCell.x += PathfindZoneManager::ZONE_BLOCK_SIZE/2;
-				Int offset = i>>1;
-				if (i&1) offset = -offset;
+				const Int offset = hierarchicalBoundaryOffset(i);
 				scanCell.x += offset;
 				ICoord2D delta;
 				delta.x = 0;
 				delta.y = -1;	// Top side moves -1.
 
-				PathfindCell *cell = getCell(LAYER_GROUND, scanCell.x, scanCell.y);
-				if (!cell)
-					continue;
-
-				if ( (cell->getClosed() || cell->getOpen()) ) {
-					if (parentZone == m_zoneManager.getBlockZone(locomotorSurface, crusher, scanCell.x, scanCell.y, m_map))
-						break;
-				}
-
 				if (isHuman && checkCellOutsideExtents(scanCell))
 					continue;
 
 				processHierarchicalCell(scanCell, delta, parentCell,
-					goalCell, parentZone, examinedZones, numExZones, crusher, cellCount);
+					goalCell, parentZone, examinedZones, numExZones, locomotorSurface, crusher, cellCount);
 			}
 		}
 		// Bottom side.
 		if (blockY<zoneBlockExtent.y-1) {
 			numExZones = 0;
-			for (i=1; i<=PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
+			for (i=0; i<PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
 			ICoord2D scanCell;
 				scanCell.y = blockY*PathfindZoneManager::ZONE_BLOCK_SIZE;
 				scanCell.y += PathfindZoneManager::ZONE_BLOCK_SIZE-1;
 				scanCell.x = (blockX*PathfindZoneManager::ZONE_BLOCK_SIZE);
 				scanCell.x += PathfindZoneManager::ZONE_BLOCK_SIZE/2;
-				Int offset = i>>1;
-				if (i&1) offset = -offset;
+				const Int offset = hierarchicalBoundaryOffset(i);
 				scanCell.x += offset;
 				ICoord2D delta;
 				delta.x = 0;
 				delta.y = 1; // Top side moves +1.
 
-				PathfindCell *cell = getCell(LAYER_GROUND, scanCell.x, scanCell.y);
-				if (!cell)
-					continue;
-
-				if ( (cell->getClosed() || cell->getOpen()) ) {
-					if (parentZone == m_zoneManager.getBlockZone(locomotorSurface, crusher, scanCell.x, scanCell.y, m_map))
-						break;
-				}
-
 				if (isHuman && checkCellOutsideExtents(scanCell))
 					continue;
 
 				processHierarchicalCell(scanCell, delta, parentCell,
-					goalCell, parentZone, examinedZones, numExZones, crusher, cellCount);
+					goalCell, parentZone, examinedZones, numExZones, locomotorSurface, crusher, cellCount);
 			}
 		}
 	}
@@ -3871,7 +3874,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 		color.blue = 0;
 		color.red = color.green = 1;
 		addIcon(nullptr, 0, 0, color);
-		debugShowSearch(false);
+		debugShowSearch(false, true);
 		Coord3D pos;
 		pos = *from;
 		pos.z = TheTerrainLogic->getGroundHeight( pos.x, pos.y ) + 0.5f;

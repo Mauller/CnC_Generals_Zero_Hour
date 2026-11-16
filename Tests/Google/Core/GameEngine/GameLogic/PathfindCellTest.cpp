@@ -253,3 +253,17 @@ TEST(PathfindCell, HeapClearAndReuseBeyondFormerPoolLimit)
 		for (size_t i = 0; i != cells.size(); ++i) EXPECT_FALSE(cells[i].isInitialized());
 	}
 }
+
+TEST(PathfindCell, HierarchicalBoundaryScanCoversEveryCellWithinTheBlock)
+{
+	const Int width = PathfindZoneManager::ZONE_BLOCK_SIZE;
+	bool seen[PathfindZoneManager::ZONE_BLOCK_SIZE] = {};
+	for (Int i = 0; i < width; ++i) {
+		const Int position = width / 2 + hierarchicalBoundaryOffset(i);
+		ASSERT_GE(position, 0);
+		ASSERT_LT(position, width);
+		EXPECT_FALSE(seen[position]);
+		seen[position] = true;
+	}
+	for (Int i = 0; i < width; ++i) EXPECT_TRUE(seen[i]);
+}
