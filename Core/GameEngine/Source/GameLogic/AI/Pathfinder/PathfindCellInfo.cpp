@@ -28,7 +28,7 @@ PathfindCellInfo *PathfindCellInfo::s_firstFree = nullptr;
 void PathfindCellInfo::forceCleanPathFindCellInfos()
 {
 	for (Int i = 0; i < CELL_INFOS_TO_ALLOCATE - 1; i++) {
-		for (Int j = 0; j < SKIP_LEVELS; ++i)
+		for (Int j = 0; j < SKIP_LEVELS; ++j)
 		{
 			s_infoArray[i].m_nextOpen[j] = nullptr;
 			s_infoArray[i].m_prevOpen[j] = nullptr;

@@ -559,16 +559,12 @@ void PathfindCell::forwardInsertionSort(PathfindCellList& list)
 	m_info->m_open = true;
 	m_info->m_closed = false;
 
-	// Select new node insertion level
+	// Promote through successive levels with a 25% chance at each step.
+	// Use client randomness so promotion does not consume the logic random stream.
 	m_skipLevel = 0;
-	Real prob = GameClientRandomValueReal(0.0f, 1.0f);
-	if (prob <= 0.2f) {
-		m_skipLevel = 1;
+	while (m_skipLevel + 1 < SKIP_LEVELS && GameClientRandomValueReal(0.0f, 1.0f) <= 0.25f) {
+		++m_skipLevel;
 	}
-
-	//if (prob <= 0.05f) {
-	//	m_skipLevel = 2;
-	//}
 
 	if (list.m_head[0] == nullptr) {
 		for (int i = 0; i <= m_skipLevel; ++i)
@@ -605,26 +601,22 @@ void PathfindCell::forwardInsertionSort(PathfindCellList& list)
 		return;
 	}
 
-	// Traverse the list to find correct position
-	PathfindCell* current = list.m_head[SKIP_LEVELS - 1];
-	PathfindCell* update[SKIP_LEVELS] = { 0 };
+	// A null predecessor represents the position before the head at each level.
+	PathfindCell* current = nullptr;
+	PathfindCell* update[SKIP_LEVELS] = { nullptr };
 	for (level = SKIP_LEVELS - 1; level >= 0; --level) {
-
-		while (current && current->m_info->m_nextOpen[level] && current->m_info->m_nextOpen[level]->m_totalCost <= m_info->m_totalCost) {
-			current = current->getNextOpen(level);
+		PathfindCell* next = current ? current->getNextOpen(level) : list.m_head[level];
+		while (next && next->m_info->m_totalCost <= m_info->m_totalCost) {
+			current = next;
+			next = current->getNextOpen(level);
 		}
 		update[level] = current;
-
-		if (level > 0 && current == nullptr)
-		{
-			current = list.m_head[level - 1];
-		}
 	}
 
 	// Insert the new node in the correct position
-	for (int level = 0; level <= m_skipLevel; ++level) {
+	for (level = 0; level <= m_skipLevel; ++level) {
 
-		// Insert into new level if level had no info prior
+		// No predecessor: insert before this level's head.
 		if (update[level] == nullptr) {
 			m_info->m_prevOpen[level] = nullptr;
 			m_info->m_nextOpen[level] =	list.m_head[level] ? list.m_head[level]->m_info : nullptr;
@@ -663,63 +655,105 @@ void PathfindCell::reverseInsertionSort(PathfindCellList& list)
 	m_info->m_open = true;
 	m_info->m_closed = false;
 
-	if (list.m_tail[0] == nullptr) {
-		for (int i = 0; i < SKIP_LEVELS; ++i)
-		{
-			m_info->m_prevOpen[0] = nullptr;
-			m_info->m_nextOpen[0] = nullptr;
-		}
+	// Promote through successive levels with a 25% chance at each step.
+	// Use client randomness so promotion does not consume the logic random stream.
+	m_skipLevel = 0;
+	while (m_skipLevel + 1 < SKIP_LEVELS && GameClientRandomValueReal(0.0f, 1.0f) <= 0.25f) {
+		++m_skipLevel;
+	}
 
-		list.m_tail[0] = this;
-		list.m_head[0] = this;
+	if (list.m_tail[0] == nullptr) {
+		for (int i = 0; i <= m_skipLevel; ++i)
+		{
+			m_info->m_prevOpen[i] = nullptr;
+			m_info->m_nextOpen[i] = nullptr;
+			list.m_tail[i] = this;
+			list.m_head[i] = this;
+		}
 		return;
 	}
+
+	int level = 0;
 
 	// If the node needs inserting after the current list tail
 	if (m_info->m_totalCost >= list.m_tail[0]->m_info->m_totalCost) {
-		m_info->m_prevOpen[0] = list.m_tail[0]->m_info;
-		list.m_tail[0]->m_info->m_nextOpen[0] = this->m_info;
-		m_info->m_nextOpen[0] = nullptr;
-		list.m_tail[0] = this;
+		for (level = 0; level <= m_skipLevel; ++level) {
+			// Need to initialise an empty level when appending.
+			if (list.m_tail[level] == nullptr) {
+				m_info->m_prevOpen[level] = nullptr;
+				m_info->m_nextOpen[level] = nullptr;
+				list.m_head[level] = this;
+				list.m_tail[level] = this;
+				continue;
+			}
+
+			m_info->m_prevOpen[level] = list.m_tail[level]->m_info;
+			list.m_tail[level]->m_info->m_nextOpen[level] = this->m_info;
+			m_info->m_nextOpen[level] = nullptr;
+			list.m_tail[level] = this;
+		}
 		return;
 	}
 
-	// Traverse the list to find correct position
-	PathfindCell* current = list.m_tail[0];
-	while (current->m_info->m_prevOpen[0] && current->m_info->m_prevOpen[0]->m_totalCost > m_info->m_totalCost) {
-		current = current->getPrevOpen(0);
+	// A null successor represents the position after the tail at each level.
+	// Only pass strictly greater costs so new cells follow existing equal costs.
+	PathfindCell* current = nullptr;
+	PathfindCell* update[SKIP_LEVELS] = { nullptr };
+	for (level = SKIP_LEVELS - 1; level >= 0; --level) {
+		PathfindCell* previous = current ? current->getPrevOpen(level) : list.m_tail[level];
+		while (previous && previous->m_info->m_totalCost > m_info->m_totalCost) {
+			current = previous;
+			previous = current->getPrevOpen(level);
+		}
+		update[level] = current;
 	}
 
 	// Insert the new node in the correct position
-	m_info->m_prevOpen[0] = current->m_info->m_prevOpen[0];
-	if (current->m_info->m_prevOpen[0] != nullptr) {
-		current->m_info->m_prevOpen[0]->m_nextOpen[0] = this->m_info;
-	}
-	else {
-		list.m_head[0] = this;
-	}
+	for (level = 0; level <= m_skipLevel; ++level) {
+		// No successor: insert after this level's tail.
+		if (update[level] == nullptr) {
+			m_info->m_nextOpen[level] = nullptr;
+			m_info->m_prevOpen[level] = list.m_tail[level] ? list.m_tail[level]->m_info : nullptr;
+			if (list.m_tail[level]) {
+				list.m_tail[level]->m_info->m_nextOpen[level] = m_info;
+			}
+			else {
+				list.m_head[level] = this;
+			}
+			list.m_tail[level] = this;
+			continue;
+		}
 
-	current->m_info->m_prevOpen[0] = this->m_info;
-	m_info->m_nextOpen[0] = current->m_info;
+		m_info->m_prevOpen[level] = update[level]->m_info->m_prevOpen[level];
+		if (update[level]->m_info->m_prevOpen[level] != nullptr) {
+			update[level]->m_info->m_prevOpen[level]->m_nextOpen[level] = this->m_info;
+		}
+		else {
+			list.m_head[level] = this;
+		}
+
+		update[level]->m_info->m_prevOpen[level] = this->m_info;
+		m_info->m_nextOpen[level] = update[level]->m_info;
+	}
 }
 
 /// put self on "open" list in ascending cost order, return new list
 void PathfindCell::putOnSortedOpenList( PathfindCellList &list )
 {
-//#if RETAIL_COMPATIBLE_PATHFINDING
-//	if (!s_useFixedPathfinding) {
-//		forwardInsertionSortRetailCompatible(list);
-//		return;
-//	}
-//#endif
+#if RETAIL_COMPATIBLE_PATHFINDING
+	if (!s_useFixedPathfinding) {
+		forwardInsertionSortRetailCompatible(list);
+		return;
+	}
+#endif
 
 	// TheSuperHackers @performance Mauller 20/03/2026 Implement reverse insertion sorting.
 	// Long and complex paths often append PathfindCell's, with high total path costs, to the open list.
 	// Appending and reverse traversal allow faster insertion of these cells, reducing pathfinding overhead by 50 - 66%.
-/*	if (list.canReverseSort(*this)) {
+	if (list.canReverseSort(*this)) {
 		reverseInsertionSort(list);
 	}
-	else */{
+	else {
 		forwardInsertionSort(list);
 	}
 }

@@ -18,7 +18,8 @@
 
 #pragma once
 
-constexpr const Int SKIP_LEVELS = 2;
+constexpr const Int SKIP_LEVELS = 8;
+static_assert(SKIP_LEVELS > 0, "The skip list must include level zero.");
 
 constexpr const Int MAX_WALL_PIECES = 128;
 constexpr const Int PATHFIND_QUEUE_LEN = 512;
