@@ -630,22 +630,14 @@ UnsignedInt PathfindCell::costToGoal( PathfindCell *goal )
 	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
 	Int dx = m_info->m_pos.x - goal->getXIndex();
 	Int dy = m_info->m_pos.y - goal->getYIndex();
-#define NO_REAL_DIST
-#ifdef REAL_DIST
-	Int cost = COST_ORTHOGONAL*WWMath::Sqrt((float)(dx*dx + dy*dy));
-#else
 	if (dx<0) dx = -dx;
 	if (dy<0) dy = -dy;
-	Int cost;
-	if (dx>dy) {
-		cost= COST_ORTHOGONAL*dx + (COST_ORTHOGONAL*dy)/2;
-	}	else {
-		cost= COST_ORTHOGONAL*dy + (COST_ORTHOGONAL*dx)/2;
-	}
 
-#endif
-
-	return cost;
+	// Use diagonal steps for the shared distance, then orthogonal steps for the remainder.
+	// This is the exact unobstructed eight-direction cost, excluding turn penalties.
+	const Int diagonalSteps = dx < dy ? dx : dy;
+	const Int orthogonalSteps = dx > dy ? dx - dy : dy - dx;
+	return COST_DIAGONAL * diagonalSteps + COST_ORTHOGONAL * orthogonalSteps;
 }
 
 UnsignedInt PathfindCell::costToHierGoal( PathfindCell *goal )
@@ -657,8 +649,14 @@ UnsignedInt PathfindCell::costToHierGoal( PathfindCell *goal )
 	}
 	Int dx = m_info->m_pos.x - goal->getXIndex();
 	Int dy = m_info->m_pos.y - goal->getYIndex();
-	Int cost = REAL_TO_INT_FLOOR(COST_ORTHOGONAL*WWMath::Sqrt((float)(dx*dx + dy*dy)) + 0.5f);
-	return cost;
+	if (dx < 0) dx = -dx;
+	if (dy < 0) dy = -dy;
+
+	// Use diagonal steps for the shared distance, then orthogonal steps for the remainder.
+	// This is the exact unobstructed eight-direction cost, excluding turn penalties.
+	const Int diagonalSteps = dx < dy ? dx : dy;
+	const Int orthogonalSteps = dx > dy ? dx - dy : dy - dx;
+	return COST_DIAGONAL * diagonalSteps + COST_ORTHOGONAL * orthogonalSteps;
 }
 
 UnsignedInt PathfindCell::costSoFar( PathfindCell *parent )
