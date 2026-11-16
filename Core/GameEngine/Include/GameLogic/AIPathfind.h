@@ -35,7 +35,6 @@
 
 #include "Pathfinder/Path.h"
 #include "Pathfinder/PathfindCell.h"
-#include "Pathfinder/PathfindCellInfo.h"
 #include "Pathfinder/PathfindCellList.h"
 #include "Pathfinder/PathfindConstants.h"
 #include "Pathfinder/PathfindLayer.h"

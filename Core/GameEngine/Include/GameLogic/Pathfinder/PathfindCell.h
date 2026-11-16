@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "PathfindCellInfo.h"
+#include "PathfindConstants.h"
 
 class Object;
 class PathfindCellList;
@@ -59,7 +59,6 @@ public:
 	void reset();
 
 	PathfindCell();
-	~PathfindCell();
 
 	Bool setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoord2D &pos );				///< flag this cell as an obstacle, from the given one
 	Bool removeObstacle( Object *obstacle );				///< unflag this cell as an obstacle, from the given one
@@ -104,45 +103,47 @@ public:
 	/// remove all cells from closed list.
 	static Int releaseOpenList( PathfindCellList &list );
 
-	PathfindCell *getNextOpen() {return m_info->m_nextOpen?m_info->m_nextOpen->m_cell: nullptr;}
-	PathfindCell *getPrevOpen() {return m_info->m_prevOpen?m_info->m_prevOpen->m_cell: nullptr;}
+	PathfindCell *getNextOpen() {return m_nextOpen;}
+	PathfindCell *getPrevOpen() {return m_prevOpen;}
 
-	UnsignedShort getXIndex() const {return m_info->m_pos.x;}
-	UnsignedShort getYIndex() const {return m_info->m_pos.y;}
+	UnsignedShort getXIndex() const {return m_pos.x;}
+	UnsignedShort getYIndex() const {return m_pos.y;}
 
 	Bool isBlockedByAlly() const;
 	void setBlockedByAlly(Bool blocked);
 
-	Bool getOpen() const {return m_info->m_open;}
-	Bool getClosed() const {return m_info->m_closed;}
-	UnsignedInt getCostSoFar() const {return m_info->m_costSoFar;}
-	UnsignedInt getTotalCost() const {return m_info->m_totalCost;}
+	Bool getOpen() const {return m_open;}
+	Bool getClosed() const {return m_closed;}
+	UnsignedInt getCostSoFar() const {return m_costSoFar;}
+	UnsignedInt getTotalCost() const {return m_totalCost;}
 
 	UnsignedInt getTotalCostDifference(PathfindCell& other) const;
 
-	void setCostSoFar(UnsignedInt cost) { if( m_info ) m_info->m_costSoFar = cost;}
-	void setTotalCost(UnsignedInt cost) { if( m_info ) m_info->m_totalCost = cost;}
+	void setCostSoFar(UnsignedInt cost) { m_costSoFar = cost;}
+	void setTotalCost(UnsignedInt cost) { m_totalCost = cost;}
 
 	void setParentCell(PathfindCell* parent);
 	void clearParentCell();
 	void setParentCellHierarchical(PathfindCell* parent);
-	PathfindCell* getParentCell() const {return m_info ? m_info->m_pathParent ? m_info->m_pathParent->m_cell : nullptr : nullptr;}
+	PathfindCell* getParentCell() const {return m_pathParent;}
 
 	Bool startPathfind( PathfindCell *goalCell );
 	Bool getPinched() const {return m_pinched;}
 	void setPinched(Bool pinch) {m_pinched = pinch;	}
 
-	Bool allocateInfo(const ICoord2D &pos);
-	void releaseInfo();
-	Bool hasInfo() const {return m_info!=nullptr;}
+	void setPosition(Int x, Int y) { m_pos.x = x; m_pos.y = y; }
+	// Tracks logical use of scratch data; storage is permanent for every cell.
+	void initializeSearchData();
+	Bool isInitialized() const { return m_initialized; }
+	void clearSearchData();
 	zoneStorageType getZone() const {return m_zone;}
 	void setZone(zoneStorageType zone) {m_zone = zone;}
 	void setGoalUnit(ObjectID unit, const ICoord2D &pos );
 	void setGoalAircraft(ObjectID unit, const ICoord2D &pos );
 	void setPosUnit(ObjectID unit, const ICoord2D &pos );
-	ObjectID getGoalUnit() const {ObjectID id = m_info?m_info->m_goalUnitID:INVALID_ID; return id;}
-	ObjectID getGoalAircraft() const {ObjectID id = m_info?m_info->m_goalAircraftID:INVALID_ID; return id;}
-	ObjectID getPosUnit() const {ObjectID id = m_info?m_info->m_posUnitID:INVALID_ID; return id;}
+	ObjectID getGoalUnit() const {return m_goalUnitID;}
+	ObjectID getGoalAircraft() const {return m_goalAircraftID;}
+	ObjectID getPosUnit() const {return m_posUnitID;}
 
 	ObjectID getObstacleID() const;
 
@@ -160,8 +161,21 @@ public:
 	static Bool groundCliff(const PathfindCell& targetCell, const PathfindCell& sourceCell);
 
 private:
-	PathfindCellInfo *m_info;
+	// Links are shared between the open and closed lists.
+	PathfindCell *m_nextOpen, *m_prevOpen, *m_pathParent;
+	UnsignedShort m_totalCost, m_costSoFar;
+	ICoord2D m_pos;
+	ObjectID m_goalUnitID, m_posUnitID, m_goalAircraftID;
+
+	Bool hasHigherPriorityThan(const PathfindCell &other) const
+	{
+		return m_totalCost < other.m_totalCost ||
+			(m_totalCost == other.m_totalCost && m_costSoFar > other.m_costSoFar);
+	}
 	ObjectID m_obstacleID;	                  ///< the object ID who overlaps this cell
+	UnsignedInt m_initialized : 1;
+	UnsignedInt m_open : 1;
+	UnsignedInt m_closed : 1;
 	UnsignedInt m_blockedByAlly : 1;          ///< True if this cell is blocked by an allied unit.
 	UnsignedInt m_obstacleIsFence : 1;        ///< True if occupied by a fence.
 	UnsignedInt m_obstacleIsTransparent : 1;  ///< True if obstacle is transparent (undefined if obstacleid is invalid)

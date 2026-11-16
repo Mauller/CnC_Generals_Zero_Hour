@@ -226,6 +226,9 @@ void PathfindLayer::allocateCells(const IRegion2D *extent)
 	Int i;
 	for (i=0; i<m_width; i++) {
 		m_layerCells[i] = &m_blockOfMapCells[i*m_height];
+		for (Int j = 0; j < m_height; ++j) {
+			m_layerCells[i][j].setPosition(i + m_xOrigin, j + m_yOrigin);
+		}
 	}
 }
 
@@ -281,6 +284,9 @@ void PathfindLayer::allocateCellsForWallLayer(const IRegion2D *extent, ObjectID 
 
 	for (i=0; i<m_width; i++) {
 		m_layerCells[i] = &m_blockOfMapCells[i*m_height];
+		for (Int j = 0; j < m_height; ++j) {
+			m_layerCells[i][j].setPosition(i + m_xOrigin, j + m_yOrigin);
+		}
 	}
 }
 
