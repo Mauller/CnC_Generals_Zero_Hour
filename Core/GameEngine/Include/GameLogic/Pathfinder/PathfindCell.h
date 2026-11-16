@@ -25,10 +25,6 @@ class PathfindCellList;
 
 typedef UnsignedShort zoneStorageType;
 
-#if !RETAIL_COMPATIBLE_PATHFINDING
-#undef RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-#endif
-
 /**
  * This represents one cell in the pathfinding grid.
  * These cells categorize the world into idealized cellular states,
@@ -73,11 +69,6 @@ public:
 	Bool isAircraftGoal() const {return m_aircraftGoal != 0;}
 
 	Bool isObstaclePresent( ObjectID objID ) const;					///< return true if the given object ID is registered as an obstacle in this cell
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-	// TheSuperHackers @info isObstructionInvalid() and clearObstruction() only used during retail compatible pathfinding failover cleanup
-	Bool isObstructionInvalid() const { return m_obstacleID != INVALID_ID && m_info == nullptr && (m_type == CELL_OBSTACLE || m_type == CELL_IMPASSABLE); }
-	void clearObstruction() { m_type = CELL_CLEAR; m_obstacleID = INVALID_ID; m_obstacleIsFence = false; m_obstacleIsTransparent = false; }
-#endif
 
 	Bool isObstacleTransparent() const;
 	Bool isObstacleFence() const;
@@ -88,11 +79,6 @@ public:
 	UnsignedInt costToHierGoal( PathfindCell *goal );
 
 	UnsignedInt costSoFar( PathfindCell *parent );
-
-#if RETAIL_COMPATIBLE_PATHFINDING
-	// Forward insertion sort that is 100% retail compatible
-	void forwardInsertionSortRetailCompatible(PathfindCellList& list);
-#endif
 
 	// Forward insertion sort, in ascending cost order
 	void forwardInsertionSort(PathfindCellList& list);

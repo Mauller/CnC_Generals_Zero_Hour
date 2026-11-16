@@ -24,18 +24,6 @@ constexpr const UnsignedInt CELL_INFOS_TO_ALLOCATE = 30000;
 PathfindCellInfo *PathfindCellInfo::s_infoArray = nullptr;
 PathfindCellInfo *PathfindCellInfo::s_firstFree = nullptr;
 
-#if RETAIL_COMPATIBLE_PATHFINDING
-void PathfindCellInfo::forceCleanPathFindCellInfos()
-{
-	for (Int i = 0; i < CELL_INFOS_TO_ALLOCATE - 1; i++) {
-		s_infoArray[i].m_nextOpen = nullptr;
-		s_infoArray[i].m_prevOpen = nullptr;
-		s_infoArray[i].m_open = FALSE;
-		s_infoArray[i].m_closed = FALSE;
-	}
-}
-#endif
-
 /**
  * Allocates a pool of pathfind cell infos.
  */
@@ -92,13 +80,9 @@ PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord
 		info->m_totalCost = 0;
 		info->m_open = 0;
 		info->m_closed = 0;
-		info->m_obstacleID = INVALID_ID;
 		info->m_goalUnitID = INVALID_ID;
 		info->m_posUnitID = INVALID_ID;
 		info->m_goalAircraftID = INVALID_ID;
-		info->m_obstacleIsFence = false;
-		info->m_obstacleIsTransparent = false;
-		info->m_blockedByAlly = false;
 	}
 	return info;
 }
@@ -109,8 +93,6 @@ PathfindCellInfo *PathfindCellInfo::getACellInfo(PathfindCell *cell,const ICoord
 void PathfindCellInfo::releaseACellInfo(PathfindCellInfo *theInfo)
 {
 	DEBUG_ASSERTCRASH(!theInfo->m_isFree, ("Shouldn't be free."));
-	//@ todo -fix this assert on usa04.  jba.
-	//DEBUG_ASSERTCRASH(theInfo->m_obstacleID==0, ("Shouldn't be obstacle."));
 	theInfo->m_pathParent = s_firstFree;
 	s_firstFree = theInfo;
 	s_firstFree->m_isFree = true;

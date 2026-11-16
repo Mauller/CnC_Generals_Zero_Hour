@@ -88,8 +88,6 @@ Bool PathfindLayer::isUnused()
 	return false;
 }
 
-
-
 /**
  * Draws debug cell info.
  */
@@ -362,11 +360,7 @@ void PathfindLayer::classifyCells()
 						groundCell->setConnectLayer(LAYER_INVALID); // disconnect it.
 					}
 				}
-#if RTS_GENERALS && RETAIL_COMPATIBLE_PATHFINDING
-				cell->setType(PathfindCell::CELL_IMPASSABLE);
-#else
 				cell->setType(PathfindCell::CELL_BRIDGE_IMPASSABLE);
-#endif
 			}
 		}
 	}
@@ -462,7 +456,6 @@ void PathfindLayer::applyZone()
 	}
 }
 
-
 /**
  * Return the bridge's object id.
  */
@@ -491,7 +484,6 @@ PathfindCell *PathfindLayer::getCell(Int x, Int y)
 	return cell;
 }
 
-
 /**
  * Classify the given map cell as clear, or not, etc.
  */
@@ -504,7 +496,6 @@ void PathfindLayer::classifyLayerMapCell( Int i, Int j , PathfindCell *cell, Bri
 
 	topLeftCorner.x = (Real)i * PATHFIND_CELL_SIZE_F;
 	bottomRightCorner.x = topLeftCorner.x + PATHFIND_CELL_SIZE_F;
-
 
 	Int bridgeCount = 0;
 	Coord3D pt;
@@ -531,11 +522,7 @@ void PathfindLayer::classifyLayerMapCell( Int i, Int j , PathfindCell *cell, Bri
 		cell->setType(PathfindCell::CELL_CLEAR);
 	} else {
 		if (bridgeCount!=0) {
-#if RTS_GENERALS && RETAIL_COMPATIBLE_PATHFINDING
-			cell->setType(PathfindCell::CELL_CLIFF); // it's off the bridge.
-#else
 			cell->setType(PathfindCell::CELL_BRIDGE_IMPASSABLE); // it's off the bridge.
-#endif
 		}
 
 		// check against the end lines.
@@ -544,21 +531,6 @@ void PathfindLayer::classifyLayerMapCell( Int i, Int j , PathfindCell *cell, Bri
 		cellBounds.lo = topLeftCorner.asCoord2D();
 		cellBounds.hi = bottomRightCorner.asCoord2D();
 
-#if RTS_GENERALS && RETAIL_COMPATIBLE_PATHFINDING
-		if (m_bridge->isCellOnEnd(&cellBounds)) {
-			cell->setType(PathfindCell::CELL_CLEAR);
-		}
-		if (m_bridge->isCellOnSide(&cellBounds)) {
-			cell->setType(PathfindCell::CELL_CLIFF);
-		} else {
-			if (m_bridge->isCellEntryPoint(&cellBounds)) {
-				cell->setType(PathfindCell::CELL_CLEAR);
-				cell->setConnectLayer(LAYER_GROUND);
-				PathfindCell *groundCell = TheAI->pathfinder()->getCell(LAYER_GROUND, i, j );
-				groundCell->setConnectLayer(cell->getLayer());
-			}
-		}
-#else
 		if (m_bridge->isCellOnSide(&cellBounds)) {
 			cell->setType(PathfindCell::CELL_BRIDGE_IMPASSABLE);
 		} else {
@@ -572,7 +544,6 @@ void PathfindLayer::classifyLayerMapCell( Int i, Int j , PathfindCell *cell, Bri
 				groundCell->setConnectLayer(cell->getLayer());
 			}
 		}
-#endif
 	}
 	Coord3D center = topLeftCorner;
 	center.x += PATHFIND_CELL_SIZE/2;
@@ -585,17 +556,12 @@ void PathfindLayer::classifyLayerMapCell( Int i, Int j , PathfindCell *cell, Bri
 			if (groundHeight+LAYER_Z_CLOSE_ENOUGH_F > bridgeHeight) {
 				PathfindCell *groundCell = TheAI->pathfinder()->getCell(LAYER_GROUND,i, j);
 				if (!(groundCell->getType()==PathfindCell::CELL_OBSTACLE)) {
-#if RTS_GENERALS && RETAIL_COMPATIBLE_PATHFINDING
-					groundCell->setType(PathfindCell::CELL_IMPASSABLE);
-#else
 					groundCell->setType(PathfindCell::CELL_BRIDGE_IMPASSABLE);
-#endif
 				}
 			}
 		}
 	}
 }
-
 
 Bool PathfindLayer::isPointOnWall(ObjectID *wallPieces, Int numPieces, const Coord3D *pt)
 {
@@ -625,7 +591,6 @@ Bool PathfindLayer::isPointOnWall(ObjectID *wallPieces, Int numPieces, const Coo
 	return false;
 }
 
-
 /**
  * Classify the given map cell as clear, or not, etc.
  */
@@ -638,7 +603,6 @@ void PathfindLayer::classifyWallMapCell( Int i, Int j , PathfindCell *cell, Obje
 
 	topLeftCorner.x = (Real)i * PATHFIND_CELL_SIZE_F;
 	bottomRightCorner.x = topLeftCorner.x + PATHFIND_CELL_SIZE_F;
-
 
 	Int bridgeCount = 0;
 	Coord3D pt;
@@ -665,11 +629,7 @@ void PathfindLayer::classifyWallMapCell( Int i, Int j , PathfindCell *cell, Obje
 		cell->setType(PathfindCell::CELL_CLEAR);
 	} else {
 		if (bridgeCount!=0) {
-#if RTS_GENERALS && RETAIL_COMPATIBLE_PATHFINDING
-			cell->setType(PathfindCell::CELL_CLIFF); // it's off the bridge.
-#else
 			cell->setType(PathfindCell::CELL_BRIDGE_IMPASSABLE); // it's off the bridge.
-#endif
 		}
 
 	}

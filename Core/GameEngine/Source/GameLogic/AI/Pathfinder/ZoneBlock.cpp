@@ -131,11 +131,9 @@ void ZoneBlock::blockCalculateZones(PathfindCell **map, PathfindLayer layers[], 
 zoneStorageType ZoneBlock::getEffectiveZone( LocomotorSurfaceTypeMask acceptableSurfaces,
 																					 Bool crusher, zoneStorageType zone) const
 {
-#if !(RTS_GENERALS && RETAIL_COMPATIBLE_PATHFINDING)
 	if (zone==PathfindZoneManager::UNINITIALIZED_ZONE) {
 		return zone;
 	}
-#endif
 
 	if (acceptableSurfaces&LOCOMOTORSURFACE_AIR) return 1; // air is all zone 1.
 
@@ -190,7 +188,6 @@ zoneStorageType ZoneBlock::getEffectiveZone( LocomotorSurfaceTypeMask acceptable
 
 	return zone+m_firstZone;
 }
-
 
 /* Allocate zone equivalency arrays large enough to hold m_maxZone entries.  If the arrays are already
 large enough, just return. */

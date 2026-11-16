@@ -28,11 +28,7 @@ class PathfindCellList
 public:
 	PathfindCellList() : m_head(nullptr), m_tail(nullptr) {}
 
-#if RETAIL_COMPATIBLE_PATHFINDING
-	void reset(PathfindCell* newHead = nullptr) { m_head = newHead; m_tail = nullptr; }
-#else
 	void reset() { m_head = nullptr; m_tail = nullptr; }
-#endif
 
 	PathfindCell* getHead() const { return m_head; }
 

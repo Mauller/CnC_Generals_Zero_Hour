@@ -56,7 +56,6 @@ void PathfindCell::reset()
 	m_aircraftGoal = false;
 	m_pinched = false;
 	if (m_info) {
-		m_info->m_obstacleID = INVALID_ID;
 		PathfindCellInfo::releaseACellInfo(m_info);
 		m_info = nullptr;
 	}
@@ -84,11 +83,6 @@ Bool PathfindCell::startPathfind( PathfindCell *goalCell  )
 	if (goalCell) {
 		m_info->m_totalCost = costToGoal( goalCell );
 	}
-#if RETAIL_COMPATIBLE_PATHFINDING
-	if (!s_useFixedPathfinding) {
-		m_info->m_open = TRUE;
-	} else
-#endif
 	{
 		m_info->m_open = FALSE;
 	}
@@ -101,29 +95,12 @@ Bool PathfindCell::startPathfind( PathfindCell *goalCell  )
  */
 Bool PathfindCell::isBlockedByAlly() const
 {
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-	if (s_useFixedPathfinding) {
-		return m_blockedByAlly;
-	}
-
-	return m_info->m_blockedByAlly;
-#else
 	return m_blockedByAlly;
-#endif
 }
 
 void PathfindCell::setBlockedByAlly(Bool blocked)
 {
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-	if (s_useFixedPathfinding) {
-		m_blockedByAlly = (blocked != 0);
-		return;
-	}
-
-	m_info->m_blockedByAlly = (blocked != 0);
-#else
 	m_blockedByAlly = (blocked != 0);
-#endif
 }
 
 /**
@@ -170,7 +147,6 @@ void PathfindCell::clearParentCell(  )
 	m_info->m_pathParent = nullptr;
 }
 
-
 /**
  * Allocates an info record for a cell.
  */
@@ -191,16 +167,11 @@ void PathfindCell::releaseInfo()
 	// TheSuperHackers @bugfix Mauller/SkyAero 05/06/2025 Parent cell links need clearing to prevent dangling pointers on starting points that can link them to an invalid parent cell.
 	// Parent cells are only cleared within Pathfinder::prependCells, so cells that do not make it onto the final path do not get their parent cell cleared.
 	// Cells with a special flags also do not get their PathfindCellInfo cleared and therefore can leave a parent cell set on a starting cell.
-#if RETAIL_COMPATIBLE_PATHFINDING
-	if (s_useFixedPathfinding)
-#endif
-	{
-		if (m_info) {
-			m_info->m_pathParent = nullptr;
-		}
+	if (m_info) {
+		m_info->m_pathParent = nullptr;
 	}
 
-	if (m_type == CELL_OBSTACLE || m_flags != NO_UNITS || m_aircraftGoal) {
+	if (m_flags != NO_UNITS || m_aircraftGoal) {
 		return;
 	}
 
@@ -263,7 +234,6 @@ void PathfindCell::setGoalUnit(ObjectID unitID, const ICoord2D &pos )
 	}
 }
 
-
 /**
  * Sets the goal aircraft into the info record for a cell.
  */
@@ -292,7 +262,6 @@ void PathfindCell::setGoalAircraft(ObjectID unitID, const ICoord2D &pos )
 		m_aircraftGoal = true;
 	}
 }
-
 
 /**
  * Sets the position unit into the info record for a cell.
@@ -339,23 +308,13 @@ void PathfindCell::setPosUnit(ObjectID unitID, const ICoord2D &pos )
 	}
 }
 
-
 /**
  * Return the relevant obstacle ID.
  */
 ObjectID PathfindCell::getObstacleID() const
 {
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-	if (s_useFixedPathfinding) {
-		return m_obstacleID;
-	}
-
-	return m_info ? m_info->m_obstacleID : INVALID_ID;
-#else
 	return m_obstacleID;
-#endif
 }
-
 
 /**
  * Flag this cell as an obstacle, from the given one.
@@ -378,16 +337,6 @@ Bool PathfindCell::setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoo
 		m_obstacleID = INVALID_ID;
 		m_obstacleIsFence = false;
 		m_obstacleIsTransparent = false;
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-		if (s_useFixedPathfinding) {
-			return true;
-		}
-
-		if (m_info) {
-			m_info->m_obstacleID = INVALID_ID;
-			releaseInfo();
-		}
-#endif
 		return true;
 	}
 
@@ -395,24 +344,6 @@ Bool PathfindCell::setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoo
 	m_obstacleID = obstacle->getID();
 	m_obstacleIsFence = isFence;
 	m_obstacleIsTransparent = obstacle->isKindOf(KINDOF_CAN_SEE_THROUGH_STRUCTURE);
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-	// TheSuperHackers @info In retail mode we need to track orphaned cells set as obstacles so we can cleanup and failover properly
-	// So we always make sure to set and clear the local obstacle data on the PathfindCell regardless of retail compat or not
-	if (s_useFixedPathfinding) {
-		return true;
-	}
-
-	if (!m_info) {
-		m_info = PathfindCellInfo::getACellInfo(this, pos);
-		if (!m_info) {
-			DEBUG_CRASH(("Not enough PathFindCellInfos in pool."));
-			return false;
-		}
-	}
-	m_info->m_obstacleID = obstacle->getID();
-	m_info->m_obstacleIsFence = isFence;
-	m_info->m_obstacleIsTransparent = obstacle->isKindOf(KINDOF_CAN_SEE_THROUGH_STRUCTURE);
-#endif
 	return true;
 }
 
@@ -421,27 +352,11 @@ Bool PathfindCell::setTypeAsObstacle( Object *obstacle, Bool isFence, const ICoo
  */
 void PathfindCell::setType( CellType type )
 {
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-	if (s_useFixedPathfinding) {
-		if (m_obstacleID != INVALID_ID) {
-			DEBUG_ASSERTCRASH(type == CELL_OBSTACLE, ("Wrong type."));
-			m_type = CELL_OBSTACLE;
-			return;
-		}
-	}
-
-	if (m_info && (m_info->m_obstacleID != INVALID_ID)) {
-		DEBUG_ASSERTCRASH(type==CELL_OBSTACLE, ("Wrong type."));
-		m_type = CELL_OBSTACLE;
-		return;
-	}
-#else
 	if (m_obstacleID != INVALID_ID) {
 		DEBUG_ASSERTCRASH(type == CELL_OBSTACLE, ("Wrong type."));
 		m_type = CELL_OBSTACLE;
 		return;
 	}
-#endif
 	m_type = type;
 }
 
@@ -454,92 +369,13 @@ Bool PathfindCell::removeObstacle( Object *obstacle )
 	if (m_type == CELL_RUBBLE) {
 		m_type = CELL_CLEAR;
 	}
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-	if (s_useFixedPathfinding) {
-		if (m_obstacleID != obstacle->getID()) return false;
-		m_type = CELL_CLEAR;
-		m_obstacleID = INVALID_ID;
-		m_obstacleIsFence = false;
-		m_obstacleIsTransparent = false;
-		return true;
-	}
-
-	if (!m_info) return false;
-	if (m_info->m_obstacleID != obstacle->getID()) return false;
-	m_type = CELL_CLEAR;
-	m_info->m_obstacleID = INVALID_ID;
-	releaseInfo();
-
-#else
 	if (m_obstacleID != obstacle->getID()) return false;
 	m_type = CELL_CLEAR;
-#endif
 	m_obstacleID = INVALID_ID;
 	m_obstacleIsFence = false;
 	m_obstacleIsTransparent = false;
 	return true;
 }
-
-#if RETAIL_COMPATIBLE_PATHFINDING
-// Retail compatible insertion sort
-void PathfindCell::forwardInsertionSortRetailCompatible(PathfindCellList& list)
-{
-	DEBUG_ASSERTCRASH(m_info, ("Has to have info."));
-	DEBUG_ASSERTCRASH(m_info->m_closed == FALSE && m_info->m_open == FALSE, ("Serious error - Invalid flags. jba"));
-
-	// mark the newCell as being on the open list
-	m_info->m_open = true;
-	m_info->m_closed = false;
-
-	if (list.m_head == nullptr)
-	{
-		list.m_head = this;
-		m_info->m_prevOpen = nullptr;
-		m_info->m_nextOpen = nullptr;
-		return;
-	}
-
-	// insertion sort
-	PathfindCell* currentCell = list.m_head;
-	PathfindCell* previousCell = nullptr;
-	UnsignedInt cellCount = 0;
-	while (currentCell && cellCount < PATHFIND_CELLS_PER_FRAME && currentCell->m_info->m_totalCost <= m_info->m_totalCost)
-	{
-		// Prevent a retail crash where a pathfindCell has an m_info with a dangling nextOpen pointer
-		if (currentCell->m_info->m_nextOpen && !currentCell->m_info->m_nextOpen->m_cell->m_info)
-		{
-			currentCell->m_info->m_nextOpen->m_cell = nullptr;
-			currentCell->m_info->m_nextOpen = nullptr;
-		}
-
-		cellCount++;
-		previousCell = currentCell;
-		currentCell = currentCell->getNextOpen();
-	}
-
-	if (currentCell)
-	{
-		// insert just before "currentCell"
-		if (currentCell->m_info->m_prevOpen)
-			currentCell->m_info->m_prevOpen->m_nextOpen = this->m_info;
-		else
-			list.m_head = this;
-
-		m_info->m_prevOpen = currentCell->m_info->m_prevOpen;
-		currentCell->m_info->m_prevOpen = this->m_info;
-
-		m_info->m_nextOpen = currentCell->m_info;
-
-	}
-	else
-	{
-		// append after "previousCell" - we are at the end of the list
-		previousCell->m_info->m_nextOpen = this->m_info;
-		m_info->m_prevOpen = previousCell->m_info;
-		m_info->m_nextOpen = nullptr;
-	}
-}
-#endif
 
 // Forward insertion sort, returns early if the list is being initialized or we are prepending the list
 void PathfindCell::forwardInsertionSort(PathfindCellList& list)
@@ -636,12 +472,6 @@ void PathfindCell::reverseInsertionSort(PathfindCellList& list)
 /// put self on "open" list in ascending cost order, return new list
 void PathfindCell::putOnSortedOpenList( PathfindCellList &list )
 {
-#if RETAIL_COMPATIBLE_PATHFINDING
-	if (!s_useFixedPathfinding) {
-		forwardInsertionSortRetailCompatible(list);
-		return;
-	}
-#endif
 
 	// TheSuperHackers @performance Mauller 20/03/2026 Implement reverse insertion sorting.
 	// Long and complex paths often append PathfindCell's, with high total path costs, to the open list.
@@ -687,17 +517,6 @@ Int PathfindCell::releaseOpenList( PathfindCellList &list )
 		PathfindCell *cur = list.m_head;
 		PathfindCellInfo *curInfo = list.m_head->m_info;
 
-#if RETAIL_COMPATIBLE_PATHFINDING
-		// TheSuperHackers @info This is only here to catch a crash point in the retail compatible pathfinding
-		// One crash mode is where a cell has no PathfindCellInfo, resulting in a nullptr access and a crash.
-		// Therefore we signal that we need to clean the maps cells and the PathfindCellInfos
-		if(!curInfo && !s_useFixedPathfinding) {
-			s_useFixedPathfinding = true;
-			s_forceCleanCells = true;
-			return count;
-		}
-#endif
-
 		if (curInfo->m_nextOpen) {
 			list.m_head = curInfo->m_nextOpen->m_cell;
 		} else {
@@ -722,16 +541,6 @@ Int PathfindCell::releaseClosedList( PathfindCellList &list )
 		DEBUG_ASSERTCRASH(list.m_head->m_info->m_closed==TRUE && list.m_head->m_info->m_open==FALSE, ("Serious error - Invalid flags. jba"));
 		PathfindCell *cur = list.m_head;
 		PathfindCellInfo *curInfo = list.m_head->m_info;
-#if RETAIL_COMPATIBLE_PATHFINDING
-		// TheSuperHackers @info This is only here to catch a crash point in the retail compatible pathfinding
-		// One crash mode is where a cell has no PathfindCellInfo, resulting in a nullptr access and a crash.
-		// Therefore we signal that we need to clean the maps cells and the PathfindCellInfos
-		if(!curInfo && !s_useFixedPathfinding) {
-			s_useFixedPathfinding = true;
-			s_forceCleanCells = true;
-			return count;
-		}
-#endif
 
 		if (curInfo->m_nextOpen) {
 			list.m_head = curInfo->m_nextOpen->m_cell;
@@ -761,19 +570,7 @@ void PathfindCell::putOnClosedList( PathfindCellList &list )
 		m_info->m_prevOpen = nullptr;
 		m_info->m_nextOpen = list.m_head ? list.m_head->m_info : nullptr;
 		if (list.m_head)
-#if RETAIL_COMPATIBLE_PATHFINDING
-		// TheSuperHackers @info This is only here to catch a crash point in the retail compatible pathfinding
-		// This crash mode occurs due to the closed list head not having an m_info associated with it
-		// A node cannot be put onto the closed list without an m_info under normal conditions
-		{
-			if (list.m_head->m_info)
-			{
-				list.m_head->m_info->m_prevOpen = this->m_info;
-			}
-		}
-#else
 			list.m_head->m_info->m_prevOpen = this->m_info;
-#endif
 
 		list.m_head = this;
 	}
@@ -806,36 +603,18 @@ Bool PathfindCell::isObstaclePresent(ObjectID objID) const
 {
 	if (objID != INVALID_ID && (getType() == CELL_OBSTACLE))
 	{
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-		if (s_useFixedPathfinding) {
-			return m_obstacleID == objID;
-		}
-
-		DEBUG_ASSERTCRASH(m_info, ("Should have info to be obstacle."));
-		return (m_info && m_info->m_obstacleID == objID);
-#else
 		return m_obstacleID == objID;
-#endif
 	}
 
 	return false;
 }
-
 
 /**
  * return true if the obstacle in the cell is KINDOF_CAN_SEE_THROUGHT_STRUCTURE
  */
 Bool PathfindCell::isObstacleTransparent() const
 {
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-	if (s_useFixedPathfinding) {
-		return m_obstacleIsTransparent;
-	}
-
-	return m_info ? m_info->m_obstacleIsTransparent : false;
-#else
 	return m_obstacleIsTransparent;
-#endif
 }
 
 /**
@@ -843,15 +622,7 @@ Bool PathfindCell::isObstacleTransparent() const
  */
 Bool PathfindCell::isObstacleFence() const
 {
-#if RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-	if (s_useFixedPathfinding) {
-		return m_obstacleIsFence;
-	}
-
-	return m_info ? m_info->m_obstacleIsFence : false;
-#else
 	return m_obstacleIsFence;
-#endif
 }
 
 UnsignedInt PathfindCell::costToGoal( PathfindCell *goal )
@@ -873,7 +644,6 @@ UnsignedInt PathfindCell::costToGoal( PathfindCell *goal )
 	}
 
 #endif
-
 
 	return cost;
 }
@@ -919,15 +689,6 @@ UnsignedInt PathfindCell::costSoFar( PathfindCell *parent )
 	Int numTurns = 0;
 	PathfindCell *prevCell = parent->getParentCell();
 	if (prevCell) {
-
-#if RETAIL_COMPATIBLE_PATHFINDING
-		// TheSuperHackers @info this is a possible crash point in the retail pathfinding, we just prevent the crash at this point
-		// External code should catch the issue in another block and cleanup the pathfinding before switching to the fixed pathfinding.
-		if (!prevCell->hasInfo())
-		{
-			return cost;
-		}
-#endif
 
 		ICoord2D dir;
 		dir.x = prevCell->getXIndex() - parent->getXIndex();

@@ -56,19 +56,12 @@ class PathfindCell;
 
 #define INFANTRY_MOVES_THROUGH_INFANTRY
 
-#if !RETAIL_COMPATIBLE_PATHFINDING
-#undef RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-#endif
-
   typedef UnsignedShort zoneStorageType;
-
 
 //----------------------------------------------------------------------------------------------------------
 
 // See GameType.h for
 // enum {LAYER_INVALID = 0, LAYER_GROUND = 1, LAYER_TOP=2 };
-
-
 
 struct TCheckMovementInfo;
 
@@ -217,9 +210,6 @@ public:
 	Path *getDebugPath();
 	void setDebugPath( Path *debugpath );
 
-#if RETAIL_COMPATIBLE_PATHFINDING
-	void forceCleanCells();
-#endif
 	void cleanOpenAndClosedLists();
 
 	// Adjusts the destination to a spot near dest that is not occupied by other units.
@@ -381,19 +371,13 @@ private:
 
 	Int						m_moveAlliesDepth;
 
-
 	// Pathfind queue
 	ObjectID			m_queuedPathfindRequests[PATHFIND_QUEUE_LEN];
 	Int						m_queuePRHead;
 	Int						m_queuePRTail;
 	Int						m_cumulativeCellsAllocated;
 
-#if RTS_ZEROHOUR && RETAIL_COMPATIBLE_CRC
-public:
-	Bool					m_classifyFenceZeroInit;
-#endif
 };
-
 
 inline void Pathfinder::setIgnoreObstacleID( ObjectID objID )
 {

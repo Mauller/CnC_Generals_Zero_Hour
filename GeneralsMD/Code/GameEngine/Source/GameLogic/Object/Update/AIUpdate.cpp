@@ -2106,11 +2106,7 @@ Bool AIUpdateInterface::isQuickPathAvailable( const Coord3D *destination ) const
 
 	const Coord3D *myPos = getObject()->getPosition();
 
-#if RTS_GENERALS && RETAIL_COMPATIBLE_PATHFINDING
-	return TheAI->pathfinder()->clientSafeQuickDoesPathExist(m_locomotorSet, myPos, destination);
-#else
 	return TheAI->pathfinder()->clientSafeQuickDoesPathExistForUI(m_locomotorSet, myPos, destination);
-#endif
 
 }
 

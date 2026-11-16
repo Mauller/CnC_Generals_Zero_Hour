@@ -26,13 +26,7 @@ constexpr const Real LAYER_Z_CLOSE_ENOUGH_F = 10.0f;
 
 constexpr const UnsignedInt PATHFIND_CELL_SIZE = 10;
 
-#if RETAIL_COMPATIBLE_CRC
-// TheSuperHackers @info Avoid mismatches by using a macro to retain
-// VC6's floating-point optimizations (e.g. 10.0f division -> 0.1f multiplication).
-#define PATHFIND_CELL_SIZE_F 10.0f
-#else
 constexpr const Real PATHFIND_CELL_SIZE_F = 10.0f;
-#endif
 
 constexpr const UnsignedInt ZONE_UPDATE_FREQUENCY = 300;
 constexpr const UnsignedInt MAX_CELL_COUNT = 500;
@@ -46,10 +40,3 @@ constexpr const Int COST_ORTHOGONAL = 10;
 constexpr const Int COST_DIAGONAL = 14;
 constexpr const Real COST_TO_DISTANCE_FACTOR = 1.0f / 10.0f;
 constexpr const Real COST_TO_DISTANCE_FACTOR_SQR = COST_TO_DISTANCE_FACTOR * COST_TO_DISTANCE_FACTOR;
-
-#if RETAIL_COMPATIBLE_PATHFINDING
-// TheSuperHackers @info This variable is here so the code will run down the retail compatible path till a failure mode is hit
-// The pathfinding will then switch over to the corrected pathfinding code for SH clients
-extern Bool s_useFixedPathfinding;
-extern Bool s_forceCleanCells;
-#endif

@@ -119,7 +119,6 @@
 #define PRESERVE_RETAIL_PHYSICS_FORWARD_SPEED_DISCREPANCY_IN_CINEMATICS (1)
 #endif
 
-
 // Note: Retail compatibility must not be broken before this project officially does.
 // Use RETAIL_COMPATIBLE_CRC, RETAIL_COMPATIBLE_DATA and RETAIL_COMPATIBLE_XFER_SAVE to guard breaking changes.
 
@@ -131,16 +130,6 @@
 
 #ifndef RETAIL_COMPATIBLE_XFER_SAVE
 #define RETAIL_COMPATIBLE_XFER_SAVE (1) // Game is expected to be Xfer Save compatible with retail Generals 1.08, Zero Hour 1.04
-#endif
-
-// This is here to easily toggle between the retail compatible with fixed pathfinding fallback and pure fixed pathfinding mode
-#ifndef RETAIL_COMPATIBLE_PATHFINDING
-#define RETAIL_COMPATIBLE_PATHFINDING (1)
-#endif
-
-// This is here to easily toggle between the retail compatible pathfinding memory allocation and the new static allocated data mode
-#ifndef RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION
-#define RETAIL_COMPATIBLE_PATHFINDING_ALLOCATION (1)
 #endif
 
 #ifndef RETAIL_COMPATIBLE_CIRCLE_FILL_ALGORITHM
@@ -223,7 +212,6 @@
 #define DEFAULT_DISPLAY_BIT_DEPTH   32
 #define DEFAULT_DISPLAY_WIDTH      800 // The standard resolution this game was designed for
 #define DEFAULT_DISPLAY_HEIGHT     600 // The standard resolution this game was designed for
-
 
 // NON-TWEAKABLE DEFINES ARE DOWN HERE
 

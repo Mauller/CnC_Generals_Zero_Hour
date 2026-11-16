@@ -24,9 +24,6 @@ class PathfindCellInfo
 {
 	friend class PathfindCell;
 public:
-#if RETAIL_COMPATIBLE_PATHFINDING
-	static void forceCleanPathFindCellInfos();
-#endif
 	static void allocateCellInfos();
 	static void releaseCellInfos();
 
@@ -36,7 +33,6 @@ public:
 protected:
 	static PathfindCellInfo *s_infoArray;
 	static PathfindCellInfo *s_firstFree;							///<
-
 
 	PathfindCellInfo *m_nextOpen, *m_prevOpen;						///< for A* "open" list, shared by closed list
 
@@ -52,12 +48,7 @@ protected:
 	ObjectID m_posUnitID;  ///< The objectID of the ground unit that is occupying this cell.
 	ObjectID m_goalAircraftID; ///< The objectID of the aircraft whose goal this is.
 
-	ObjectID m_obstacleID;	///< the object ID who overlaps this cell
-
 	UnsignedInt m_isFree:1;
-	UnsignedInt m_blockedByAlly:1;///< True if this cell is blocked by an allied unit.
-	UnsignedInt m_obstacleIsFence:1;///< True if occupied by a fence.
-	UnsignedInt m_obstacleIsTransparent:1;///< True if obstacle is transparent (undefined if obstacleid is invalid)
 	/// @todo Do we need both mark values in this cell?  Can't store a single value and compare it?
 	UnsignedInt m_open:1;													///< place for marking this cell as on the open list
 	UnsignedInt m_closed:1;												///< place for marking this cell as on the closed list

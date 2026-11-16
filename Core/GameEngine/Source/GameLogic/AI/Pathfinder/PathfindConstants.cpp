@@ -18,8 +18,3 @@
 
 #include "PreRTS.h"
 #include "GameLogic/Pathfinder/PathfindConstants.h"
-
-#if RETAIL_COMPATIBLE_PATHFINDING
-Bool s_useFixedPathfinding = false;
-Bool s_forceCleanCells = false;
-#endif
