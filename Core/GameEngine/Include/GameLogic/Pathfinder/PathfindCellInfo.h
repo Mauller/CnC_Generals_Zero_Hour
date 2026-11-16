@@ -31,6 +31,13 @@ public:
 	static void releaseACellInfo(PathfindCellInfo *theInfo);
 
 protected:
+	// Prefer lower total cost, then greater progress from the start.
+	Bool hasHigherPriorityThan(const PathfindCellInfo &other) const
+	{
+		return m_totalCost < other.m_totalCost ||
+			(m_totalCost == other.m_totalCost && m_costSoFar > other.m_costSoFar);
+	}
+
 	static PathfindCellInfo *s_infoArray;
 	static PathfindCellInfo *s_firstFree;							///<
 
