@@ -3678,7 +3678,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 					if (!cell)
 						continue;
 
-					if ((cell->getClosed() || cell->getOpen()))
+					if (cell == parentCell || cell->getClosed() || cell->getOpen())
 						continue;
 
 					PathfindCell *startCell = getCell(LAYER_GROUND, ndx.x, ndx.y);
@@ -3686,8 +3686,12 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 						continue;
 
 					if (startCell != parentCell) {
+						// Preserve existing routes and list membership at the bridge entrance.
+						if (startCell->getOpen() || startCell->getClosed())
+							continue;
 						startCell->initializeSearchData();
-
+						startCell->setCostSoFar(parentCell->getCostSoFar() + startCell->costToHierGoal(parentCell));
+						startCell->setTotalCost(startCell->getCostSoFar() + startCell->costToHierGoal(goalCell));
 						startCell->setParentCellHierarchical(parentCell);
 						if (!startCell->getClosed() && !startCell->getOpen()) {
 							startCell->putOnClosedList(m_closedList);
