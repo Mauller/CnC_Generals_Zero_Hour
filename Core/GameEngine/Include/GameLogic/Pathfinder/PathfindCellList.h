@@ -42,6 +42,7 @@ public:
 	PathfindOpenHeap() : m_nextSequence(0) {}
 	Bool empty() const { return m_cells.empty(); }
 	UnsignedInt size() const { return (UnsignedInt)m_cells.size(); }
+	void reserve(UnsignedInt cellCount) { m_cells.reserve(cellCount); }
 	PathfindCell* getHead() const { return empty() ? nullptr : m_cells[0]; }
 	PathfindCell* getCell(UnsignedInt index) const { return m_cells[index]; }
 	void insert(PathfindCell& cell);

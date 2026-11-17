@@ -730,7 +730,10 @@ void Pathfinder::newMap()
 		DEBUG_ASSERTCRASH(m_map == nullptr, ("Can't reallocate pathfind cells."));
  		m_zoneManager.allocateBlocks(m_extent);
 		// Allocate cells.
-		m_blockOfMapCells = MSGNEW("PathfindMapCells") PathfindCell[(bounds.hi.x+1)*(bounds.hi.y+1)];
+		const UnsignedInt cellCount = (UnsignedInt)(bounds.hi.x + 1) * (UnsignedInt)(bounds.hi.y + 1);
+		// Allocate the open frontier at map load; clear/reset retain this capacity between searches.
+		m_openList.reserve(cellCount);
+		m_blockOfMapCells = MSGNEW("PathfindMapCells") PathfindCell[cellCount];
 		m_map = MSGNEW("PathfindMapCells") PathfindCellP[bounds.hi.x+1];
 		Int i;
 		for (i=0; i<=bounds.hi.x; i++) {
