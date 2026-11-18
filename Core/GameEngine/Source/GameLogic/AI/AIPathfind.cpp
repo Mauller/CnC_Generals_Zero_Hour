@@ -3378,86 +3378,101 @@ Path *Pathfinder::findGroundPath( const Coord3D *from,
 	return nullptr;
 }
 
-/**
- * Find a short, valid path between given locations.
- * Uses A* algorithm.
- */
-void Pathfinder::processHierarchicalCell( const ICoord2D &scanCell, const ICoord2D &delta, PathfindCell *parentCell,
-																				 PathfindCell *goalCell, zoneStorageType parentZone,
-																				 zoneStorageType *examinedZones, Int &numExZones,
-																				 LocomotorSurfaceTypeMask locomotorSurface, Bool crusher, Int &cellCount)
+// Score coordinates without initializing search data for every candidate.
+static UnsignedInt crossingOctileDistance(Int dx, Int dy)
 {
-	if (scanCell.x<m_extent.lo.x || scanCell.x>m_extent.hi.x ||
-		scanCell.y<m_extent.lo.y || scanCell.y>m_extent.hi.y) {
-		return;
+	if (dx < 0) dx = -dx;
+	if (dy < 0) dy = -dy;
+	const Int diagonal = dx < dy ? dx : dy;
+	return COST_DIAGONAL * diagonal + COST_ORTHOGONAL * (dx > dy ? dx - dy : dy - dx);
+}
+
+void Pathfinder::processHierarchicalSide(Int blockX, Int blockY, const ICoord2D &delta,
+	PathfindCell *parentCell, PathfindCell *goalCell, zoneStorageType parentZone,
+	LocomotorSurfaceTypeMask locomotorSurface, Bool crusher, Bool isHuman, Int &cellCount)
+{
+	if (parentZone == PathfindZoneManager::UNINITIALIZED_ZONE) return;
+	struct Candidate
+	{
+		ICoord2D scan;
+		ICoord2D adjacent;
+		PathfindCell *source;
+		PathfindCell *destination;
+		zoneStorageType zone;
+		UnsignedInt costSoFar;
+		UnsignedInt remainingCost;
+		UnsignedInt totalCost;
+	};
+	Candidate candidates[PathfindZoneManager::ZONE_BLOCK_SIZE];
+	Int candidateCount = 0;
+	const zoneStorageType globalZone = m_zoneManager.getEffectiveZone(locomotorSurface, crusher, parentZone);
+	for (Int i = 0; i < PathfindZoneManager::ZONE_BLOCK_SIZE; ++i) {
+		ICoord2D scan;
+		scan.x = blockX * PathfindZoneManager::ZONE_BLOCK_SIZE;
+		scan.y = blockY * PathfindZoneManager::ZONE_BLOCK_SIZE;
+		if (delta.x) {
+			if (delta.x > 0) scan.x += PathfindZoneManager::ZONE_BLOCK_SIZE - 1;
+			scan.y += PathfindZoneManager::ZONE_BLOCK_SIZE / 2 + hierarchicalBoundaryOffset(i);
+		} else {
+			if (delta.y > 0) scan.y += PathfindZoneManager::ZONE_BLOCK_SIZE - 1;
+			scan.x += PathfindZoneManager::ZONE_BLOCK_SIZE / 2 + hierarchicalBoundaryOffset(i);
+		}
+		if (scan.x < m_extent.lo.x || scan.x > m_extent.hi.x ||
+			scan.y < m_extent.lo.y || scan.y > m_extent.hi.y) continue;
+		if (isHuman && checkCellOutsideExtents(scan)) continue;
+		if (m_zoneManager.getBlockZone(locomotorSurface, crusher, scan.x, scan.y, m_map) != parentZone) continue;
+		PathfindCell* source = getCell(LAYER_GROUND, scan.x, scan.y);
+		if (source != parentCell && (source->getOpen() || source->getClosed())) continue;
+		ICoord2D adjacent = scan;
+		adjacent.x += delta.x;
+		adjacent.y += delta.y;
+		if (adjacent.x < m_extent.lo.x || adjacent.x > m_extent.hi.x ||
+			adjacent.y < m_extent.lo.y || adjacent.y > m_extent.hi.y) continue;
+		PathfindCell* destination = getCell(LAYER_GROUND, adjacent.x, adjacent.y);
+		if ((destination->getOpen() || destination->getClosed())) continue;
+		const zoneStorageType zone = m_zoneManager.getBlockZone(locomotorSurface, crusher, adjacent.x, adjacent.y, m_map);
+		if (m_zoneManager.getEffectiveZone(locomotorSurface, crusher, zone) != globalZone) continue;
+		UnsignedInt costSoFar = parentCell->getCostSoFar() +
+			crossingOctileDistance(adjacent.x - parentCell->getXIndex(), adjacent.y - parentCell->getYIndex());
+		if (source->getPinched() || destination->getPinched()) costSoFar += 2 * COST_ORTHOGONAL;
+		const UnsignedInt remainingCost = crossingOctileDistance(adjacent.x - goalCell->getXIndex(), adjacent.y - goalCell->getYIndex());
+		const UnsignedInt cost = costSoFar + remainingCost;
+		Int slot;
+		for (slot = 0; slot < candidateCount; ++slot) {
+			if (candidates[slot].zone == zone) break;
+		}
+		if (slot < candidateCount && cost >= candidates[slot].totalCost) continue;
+		if (slot == candidateCount) ++candidateCount;
+		candidates[slot].scan = scan;
+		candidates[slot].adjacent = adjacent;
+		candidates[slot].source = source;
+		candidates[slot].destination = destination;
+		candidates[slot].costSoFar = costSoFar;
+		candidates[slot].remainingCost = remainingCost;
+		candidates[slot].zone = zone;
+		candidates[slot].totalCost = cost;
 	}
-	if (parentZone == PathfindZoneManager::UNINITIALIZED_ZONE) {
-		return;
-	}
-	if (parentZone == m_zoneManager.getBlockZone(locomotorSurface,
-		crusher, scanCell.x, scanCell.y, m_map)) {
-		PathfindCell *newCell = getCell(LAYER_GROUND, scanCell.x, scanCell.y);
-
-		// The current parent may itself be the only crossing on this side of the block.
-		if (newCell != parentCell && (newCell->getOpen() || newCell->getClosed()))
-			return; // already looked at this one.
-
-		ICoord2D adjacentCell = scanCell;
-		adjacentCell.x += delta.x;
-		adjacentCell.y += delta.y;
-		if (adjacentCell.x<m_extent.lo.x || adjacentCell.x>m_extent.hi.x ||
-			adjacentCell.y<m_extent.lo.y || adjacentCell.y>m_extent.hi.y) {
-			return;
+	for (Int candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex) {
+		const Candidate &candidate = candidates[candidateIndex];
+		PathfindCell *source = candidate.source;
+		PathfindCell *destination = candidate.destination;
+		// Candidates were validated above; retain list guards before linking cells.
+		if (source != parentCell && (source->getOpen() || source->getClosed())) continue;
+		if ((destination->getOpen() || destination->getClosed())) continue;
+		if (source != parentCell) {
+			source->initializeSearchData();
+			source->putOnClosedList(m_closedList);
 		}
-		PathfindCell *adjNewCell = getCell(LAYER_GROUND, adjacentCell.x, adjacentCell.y);
-		if ((adjNewCell->getOpen() || adjNewCell->getClosed())) return; // already looked at this one.
-		zoneStorageType parentGlobalZone = m_zoneManager.getEffectiveZone(locomotorSurface, crusher, parentZone);
-
-		/// @todo - somehow out of bounds or bogus newZone.
-		zoneStorageType newZone = m_zoneManager.getBlockZone(locomotorSurface,
-							crusher, adjacentCell.x, adjacentCell.y, m_map);
-		zoneStorageType newGlobalZone = m_zoneManager.getEffectiveZone(locomotorSurface, crusher, newZone);
-		if (newGlobalZone != parentGlobalZone) {
-			return; // can't step over. jba.
-		}
-		Int j;
-		Bool found=false;
-		for (j=0; j<numExZones; j++) {
-			if (examinedZones[j] == newZone) {
-				found = true;
-				break;
-			}
-		}
-		if (found) {
-			return;
-		}
-
-		if (newCell != parentCell) {
-			newCell->initializeSearchData();
-			newCell->putOnClosedList(m_closedList);
-		}
-
-		adjNewCell->initializeSearchData();
-
-		cellCount++;
-		Int curCost = adjNewCell->costToHierGoal(parentCell);
-		Int remCost = adjNewCell->costToHierGoal(goalCell);
-		if (adjNewCell->getPinched() || newCell->getPinched()) {
-			curCost += 2*COST_ORTHOGONAL;
-		}	else {
-			examinedZones[numExZones] = newZone;
-			numExZones++;
-		}
-
-		adjNewCell->setCostSoFar(parentCell->getCostSoFar() + curCost);
-		adjNewCell->setTotalCost(adjNewCell->getCostSoFar()+remCost);
-		adjNewCell->setParentCellHierarchical(parentCell);
-		// insert newCell in open list such that open list is sorted, smallest total path cost first
-		adjNewCell->putOnOpenList( m_openList );
-
-
+		destination->initializeSearchData();
+		++cellCount;
+		destination->setCostSoFar(candidate.costSoFar);
+		// Use the stored g value to preserve the existing 16-bit cost behaviour.
+		destination->setTotalCost(destination->getCostSoFar() + candidate.remainingCost);
+		destination->setParentCellHierarchical(parentCell);
+		destination->putOnOpenList(m_openList);
 	}
 }
+
 
 /**
  * Find a short, valid path between given locations.
@@ -3769,94 +3784,24 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 		// put parent cell onto closed list - its evaluation is finished
 		parentCell->putOnClosedList( m_closedList );
 
-		Int i;
-		zoneStorageType examinedZones[PathfindZoneManager::ZONE_BLOCK_SIZE];
-		Int numExZones = 0;
-		// Left side.
-		if (blockX>0) {
-			for (i=0; i<PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
-			ICoord2D scanCell;
-				scanCell.x = blockX*PathfindZoneManager::ZONE_BLOCK_SIZE;
-				scanCell.y = (blockY*PathfindZoneManager::ZONE_BLOCK_SIZE);
-				scanCell.y += PathfindZoneManager::ZONE_BLOCK_SIZE/2;
-				const Int offset = hierarchicalBoundaryOffset(i);
-				scanCell.y += offset;
-				ICoord2D delta;
-				delta.x = -1; // left side moves -1.
-				delta.y = 0;
-
-				if (isHuman && checkCellOutsideExtents(scanCell))
-					continue;
-
-				processHierarchicalCell(scanCell, delta, parentCell,
-					goalCell, parentZone, examinedZones, numExZones, locomotorSurface, crusher, cellCount);
-			}
+		ICoord2D delta;
+		if (blockX > 0) {
+			delta.x = -1; delta.y = 0;
+			processHierarchicalSide(blockX, blockY, delta, parentCell, goalCell, parentZone, locomotorSurface, crusher, isHuman, cellCount);
 		}
-		// Right side.
-		if (blockX<zoneBlockExtent.x-1) {
-			numExZones = 0;
-			for (i=0; i<PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
-			ICoord2D scanCell;
-				scanCell.x = blockX*PathfindZoneManager::ZONE_BLOCK_SIZE;
-				scanCell.x += PathfindZoneManager::ZONE_BLOCK_SIZE-1;
-				scanCell.y = (blockY*PathfindZoneManager::ZONE_BLOCK_SIZE);
-				scanCell.y += PathfindZoneManager::ZONE_BLOCK_SIZE/2;
-				const Int offset = hierarchicalBoundaryOffset(i);
-				scanCell.y += offset;
-				ICoord2D delta;
-				delta.x = 1; // right side moves +1.
-				delta.y = 0;
-
-				if (isHuman && checkCellOutsideExtents(scanCell))
-					continue;
-
-				processHierarchicalCell(scanCell, delta, parentCell,
-					goalCell, parentZone, examinedZones, numExZones, locomotorSurface, crusher, cellCount);
-			}
+		if (blockX < zoneBlockExtent.x - 1) {
+			delta.x = 1; delta.y = 0;
+			processHierarchicalSide(blockX, blockY, delta, parentCell, goalCell, parentZone, locomotorSurface, crusher, isHuman, cellCount);
 		}
-		// Top side.
-		if (blockY>0) {
-			numExZones = 0;
-			for (i=0; i<PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
-			ICoord2D scanCell;
-				scanCell.y = blockY*PathfindZoneManager::ZONE_BLOCK_SIZE;
-				scanCell.x = (blockX*PathfindZoneManager::ZONE_BLOCK_SIZE);
-				scanCell.x += PathfindZoneManager::ZONE_BLOCK_SIZE/2;
-				const Int offset = hierarchicalBoundaryOffset(i);
-				scanCell.x += offset;
-				ICoord2D delta;
-				delta.x = 0;
-				delta.y = -1;	// Top side moves -1.
-
-				if (isHuman && checkCellOutsideExtents(scanCell))
-					continue;
-
-				processHierarchicalCell(scanCell, delta, parentCell,
-					goalCell, parentZone, examinedZones, numExZones, locomotorSurface, crusher, cellCount);
-			}
+		if (blockY > 0) {
+			delta.x = 0; delta.y = -1;
+			processHierarchicalSide(blockX, blockY, delta, parentCell, goalCell, parentZone, locomotorSurface, crusher, isHuman, cellCount);
 		}
-		// Bottom side.
-		if (blockY<zoneBlockExtent.y-1) {
-			numExZones = 0;
-			for (i=0; i<PathfindZoneManager::ZONE_BLOCK_SIZE; i++) {
-			ICoord2D scanCell;
-				scanCell.y = blockY*PathfindZoneManager::ZONE_BLOCK_SIZE;
-				scanCell.y += PathfindZoneManager::ZONE_BLOCK_SIZE-1;
-				scanCell.x = (blockX*PathfindZoneManager::ZONE_BLOCK_SIZE);
-				scanCell.x += PathfindZoneManager::ZONE_BLOCK_SIZE/2;
-				const Int offset = hierarchicalBoundaryOffset(i);
-				scanCell.x += offset;
-				ICoord2D delta;
-				delta.x = 0;
-				delta.y = 1; // Top side moves +1.
-
-				if (isHuman && checkCellOutsideExtents(scanCell))
-					continue;
-
-				processHierarchicalCell(scanCell, delta, parentCell,
-					goalCell, parentZone, examinedZones, numExZones, locomotorSurface, crusher, cellCount);
-			}
+		if (blockY < zoneBlockExtent.y - 1) {
+			delta.x = 0; delta.y = 1;
+			processHierarchicalSide(blockX, blockY, delta, parentCell, goalCell, parentZone, locomotorSurface, crusher, isHuman, cellCount);
 		}
+
 	}
 
 	if (closestOK && closestCell) {
