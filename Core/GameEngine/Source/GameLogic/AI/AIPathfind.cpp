@@ -28,6 +28,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "GameLogic/AIPathfind.h"
+#include <vector>
 #include "GameLogic/Pathfinder/PathfindConstants.h"
 
 #include "Common/PerfTimer.h"
@@ -2482,7 +2483,7 @@ Path *Pathfinder::findPath( Object *obj, const LocomotorSet& locomotorSet, const
 	}
 
 	m_zoneManager.clearPassableFlags();
-	Path *hPat = findHierarchicalPath(isHuman, locomotorSet, from, rawTo, false);
+	Path *hPat = findHierarchicalPathForUnit(obj, locomotorSet, isHuman, from, rawTo, false, false, false);
 	if (hPat) {
 		deleteInstance(hPat);
 	}	else {
@@ -3478,6 +3479,96 @@ void Pathfinder::processHierarchicalSide(Int blockX, Int blockY, const ICoord2D 
  * Find a short, valid path between given locations.
  * Uses A* algorithm.
  */
+// Recover coarse guidance from a nearby clear ground position. The fine path still starts at from.
+Path *Pathfinder::findHierarchicalPathForUnit(const Object *obj, const LocomotorSet &locomotorSet,
+	Bool isHuman, const Coord3D *from, const Coord3D *to, Bool crusher, Bool closestOK, Bool considerTransient)
+{
+	if (!m_isMapReady) return nullptr;
+	const Bool startedTunneling = m_isTunneling;
+	auto runCoarse = [&](const Coord3D &start) -> Path* {
+		Path *path = closestOK ? findClosestHierarchicalPath(isHuman, locomotorSet, &start, to, crusher) :
+			findHierarchicalPath(isHuman, locomotorSet, &start, to, crusher);
+		// The coarse pass resets this flag; preserve the fine pass's original escape behaviour.
+		m_isTunneling = startedTunneling;
+		return path;
+	};
+	// Layer transitions need a separate escape search; retain the existing fallback for those.
+	if (!obj || obj->getLayer() != LAYER_GROUND) {
+		if (closestOK && startedTunneling) return nullptr;
+		return runCoarse(*from);
+	}
+	Int radius;
+	Bool centerInCell;
+	getRadiusAndCenter(obj, radius, centerInCell);
+	Coord3D clippedFrom = *from, clippedTo = *to;
+	clip(&clippedFrom, &clippedTo);
+	ICoord2D origin;
+	worldToCell(&clippedFrom, &origin);
+	const LocomotorSurfaceTypeMask surfaces = locomotorSet.getValidSurfaces();
+	auto isClear = [&](const ICoord2D &pos, Bool escaping) -> Bool {
+		PathfindCell *centre = getCell(LAYER_GROUND, pos.x, pos.y);
+		if (!validMovementPosition(crusher, surfaces, centre) || (escaping && centre->getPinched())) return false;
+		const Int above = radius + (centerInCell ? 1 : 0);
+		for (Int x = pos.x - radius; x < pos.x + above; ++x) {
+			for (Int y = pos.y - radius; y < pos.y + above; ++y) {
+				if (isHuman) {
+					ICoord2D footprintCell = {x, y};
+					if (checkCellOutsideExtents(footprintCell)) return false;
+				}
+				PathfindCell *cell = getCell(LAYER_GROUND, x, y);
+				if (!validMovementPosition(crusher, surfaces, cell) || (escaping && cell->getPinched())) return false;
+			}
+		}
+		TCheckMovementInfo info;
+		info.cell = pos;
+		info.layer = LAYER_GROUND;
+		info.centerInCell = centerInCell;
+		info.radius = radius;
+		info.considerTransient = considerTransient;
+		info.acceptableSurfaces = surfaces;
+		return checkForMovement(obj, info) && !info.enemyFixed && info.allyFixedCount == 0;
+	};
+	if (isClear(origin, false)) return runCoarse(*from);
+
+	// Bound escape work independently of the pathfinding lists and per-cell search data.
+	const Int reach = 2 * PathfindZoneManager::ZONE_BLOCK_SIZE;
+	const Int width = 2 * reach + 1;
+	struct EscapeCell { ICoord2D pos; Int parent; };
+	std::vector<EscapeCell> queue;
+	queue.reserve(width * width);
+	std::vector<UnsignedByte> seen(width * width, 0);
+	EscapeCell first = {origin, -1};
+	queue.push_back(first);
+	seen[reach * width + reach] = 1;
+	static const ICoord2D delta[] = {{1,0}, {0,1}, {-1,0}, {0,-1}};
+	for (Int head = 0; head < (Int)queue.size(); ++head) {
+		const ICoord2D pos = queue[head].pos;
+		if (head != 0 && isClear(pos, true)) {
+			Coord3D escape;
+			adjustCoordToCell(pos.x, pos.y, centerInCell, escape, LAYER_GROUND);
+			Path *path = runCoarse(escape);
+			if (!path) return nullptr;
+			// Include the escape prefix in the hint, without changing the returned fine path's origin.
+			for (Int node = head; node >= 0; node = queue[node].parent) {
+				m_zoneManager.setPassable(queue[node].pos.x, queue[node].pos.y, true);
+			}
+			return path;
+		}
+		for (Int d = 0; d < 4; ++d) {
+			ICoord2D next = {pos.x + delta[d].x, pos.y + delta[d].y};
+			const Int x = next.x - origin.x + reach, y = next.y - origin.y + reach;
+			if (x < 0 || x >= width || y < 0 || y >= width) continue;
+			if (seen[y * width + x]) continue;
+			if (!getCell(LAYER_GROUND, next.x, next.y)) continue;
+			if (isHuman && checkCellOutsideExtents(next)) continue;
+			seen[y * width + x] = 1;
+			EscapeCell entry = {next, head};
+			queue.push_back(entry);
+		}
+	}
+	return nullptr;
+}
+
 Path *Pathfinder::findHierarchicalPath( Bool isHuman, const LocomotorSet& locomotorSet, const Coord3D *from,
 													 const Coord3D *to, Bool crusher)
 {
@@ -4426,17 +4517,13 @@ Path *Pathfinder::findClosestPath( Object *obj, const LocomotorSet& locomotorSet
 	}
 
 	Bool gotHierarchicalPath = false;
-	if (m_isTunneling) {
-		m_zoneManager.setAllPassable(); // can't optimize.
-	}	else {
-		m_zoneManager.clearPassableFlags();
-		Path *hPat = findClosestHierarchicalPath(isHuman, locomotorSet, from, rawTo, false);
-		if (hPat) {
-			deleteInstance(hPat);
-			gotHierarchicalPath = true;
-		}	else {
-			m_zoneManager.setAllPassable();
-		}
+	m_zoneManager.clearPassableFlags();
+	Path *hPat = findHierarchicalPathForUnit(obj, locomotorSet, isHuman, from, rawTo, false, true, blocked);
+	if (hPat) {
+		deleteInstance(hPat);
+		gotHierarchicalPath = true;
+	} else {
+		m_zoneManager.setAllPassable();
 	}
 	const Bool startedStuck = m_isTunneling;
 
