@@ -53,3 +53,9 @@ constexpr const Real COST_TO_DISTANCE_FACTOR_SQR = COST_TO_DISTANCE_FACTOR * COS
 extern Bool s_useFixedPathfinding;
 extern Bool s_forceCleanCells;
 #endif
+
+// Zero-based center-out scan: for ten cells, visit positions 5,4,6,3,7,2,8,1,9,0.
+inline Int hierarchicalBoundaryOffset(Int index)
+{
+	return (index & 1) ? -(index + 1) / 2 : index / 2;
+}

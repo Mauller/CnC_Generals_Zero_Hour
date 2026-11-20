@@ -3075,6 +3075,15 @@ Path *Pathfinder::buildHierarchicalPath( const Coord3D *fromPos, PathfindCell *g
 	ICoord2D cellNdxMin, cellNdxMax;
 	worldToCell(&minPos, &cellNdxMin);
 	worldToCell(&maxPos, &cellNdxMax);
+#if RETAIL_COMPATIBLE_PATHFINDING
+	if (s_useFixedPathfinding)
+#endif
+	{
+		if (cellNdxMin.x < m_extent.lo.x) cellNdxMin.x = m_extent.lo.x;
+		if (cellNdxMin.y < m_extent.lo.y) cellNdxMin.y = m_extent.lo.y;
+		if (cellNdxMax.x > m_extent.hi.x) cellNdxMax.x = m_extent.hi.x;
+		if (cellNdxMax.y > m_extent.hi.y) cellNdxMax.y = m_extent.hi.y;
+	}
 	Int i, j;
 	for (i=cellNdxMin.x; i<=cellNdxMax.x; i++) {
 		for (j=cellNdxMin.y; j<=cellNdxMax.y; j++) {
@@ -3616,10 +3625,170 @@ Path *Pathfinder::findGroundPath( const Coord3D *from,
 	return nullptr;
 }
 
+// Score boundary coordinates without allocating search info for every candidate.
+static UnsignedInt crossingOctileDistance(Int dx, Int dy)
+{
+	if (dx < 0) dx = -dx;
+	if (dy < 0) dy = -dy;
+	const Int diagonal = dx < dy ? dx : dy;
+	return COST_DIAGONAL * diagonal + COST_ORTHOGONAL * (dx > dy ? dx - dy : dy - dx);
+}
+
+// Retain the lowest estimated cost per neighbouring zone; equal scores keep centre-out order.
+void Pathfinder::processHierarchicalSide(Int blockX, Int blockY, const ICoord2D &delta,
+	PathfindCell *parentCell, PathfindCell *goalCell, zoneStorageType parentZone,
+	LocomotorSurfaceTypeMask locomotorSurface, Bool crusher, Bool isHuman, Int &cellCount)
+{
+	if (parentZone == PathfindZoneManager::UNINITIALIZED_ZONE)
+		return;
+
+	// Cache the best crossing for each neighbouring zone before allocating search info.
+	struct Candidate
+	{
+		ICoord2D scan;
+		ICoord2D adjacent;
+		PathfindCell *source;
+		PathfindCell *destination;
+		zoneStorageType zone;
+		UnsignedInt costSoFar;
+		UnsignedInt remainingCost;
+		UnsignedInt totalCost;
+	};
+
+	Candidate candidates[PathfindZoneManager::ZONE_BLOCK_SIZE];
+	Int candidateCount = 0;
+	const zoneStorageType globalZone = m_zoneManager.getEffectiveZone(locomotorSurface, crusher, parentZone);
+
+	// Examine every boundary position in centre-out order.
+	for (Int i = 0; i < PathfindZoneManager::ZONE_BLOCK_SIZE; ++i)
+	{
+		// Locate the source cell on the requested side of this block.
+		ICoord2D scan;
+		scan.x = blockX * PathfindZoneManager::ZONE_BLOCK_SIZE;
+		scan.y = blockY * PathfindZoneManager::ZONE_BLOCK_SIZE;
+
+		if (delta.x)
+		{
+			if (delta.x > 0)
+				scan.x += PathfindZoneManager::ZONE_BLOCK_SIZE - 1;
+
+			scan.y += PathfindZoneManager::ZONE_BLOCK_SIZE / 2 + hierarchicalBoundaryOffset(i);
+		} else
+		{
+			if (delta.y > 0)
+				scan.y += PathfindZoneManager::ZONE_BLOCK_SIZE - 1;
+
+			scan.x += PathfindZoneManager::ZONE_BLOCK_SIZE / 2 + hierarchicalBoundaryOffset(i);
+		}
+
+		// Require an eligible source in the parent zone; the parent itself remains usable.
+		if (scan.x < m_extent.lo.x || scan.x > m_extent.hi.x ||
+			scan.y < m_extent.lo.y || scan.y > m_extent.hi.y)
+			continue;
+
+		if (isHuman && checkCellOutsideExtents(scan))
+			continue;
+
+		if (m_zoneManager.getBlockZone(locomotorSurface, crusher, scan.x, scan.y, m_map) != parentZone)
+			continue;
+
+		PathfindCell* source = getCell(LAYER_GROUND, scan.x, scan.y);
+		if (source != parentCell && source->hasInfo() && (source->getOpen() || source->getClosed()))
+			continue;
+
+		// Cross the boundary and require connectivity for this locomotor and crusher mode.
+		ICoord2D adjacent = scan;
+		adjacent.x += delta.x;
+		adjacent.y += delta.y;
+
+		if (adjacent.x < m_extent.lo.x || adjacent.x > m_extent.hi.x ||
+			adjacent.y < m_extent.lo.y || adjacent.y > m_extent.hi.y)
+			continue;
+
+		PathfindCell* destination = getCell(LAYER_GROUND, adjacent.x, adjacent.y);
+		if (destination->hasInfo() && (destination->getOpen() || destination->getClosed()))
+			continue;
+
+		const zoneStorageType zone = m_zoneManager.getBlockZone(locomotorSurface, crusher, adjacent.x, adjacent.y, m_map);
+		if (m_zoneManager.getEffectiveZone(locomotorSurface, crusher, zone) != globalZone)
+			continue;
+
+		// Score the route through this crossing, including the penalty for pinched cells.
+		UnsignedInt costSoFar = parentCell->getCostSoFar() +
+			crossingOctileDistance(adjacent.x - parentCell->getXIndex(), adjacent.y - parentCell->getYIndex());
+
+		if (source->getPinched() || destination->getPinched())
+			costSoFar += 2 * COST_ORTHOGONAL;
+
+		const UnsignedInt remainingCost = crossingOctileDistance(adjacent.x - goalCell->getXIndex(), adjacent.y - goalCell->getYIndex());
+		const UnsignedInt cost = costSoFar + remainingCost;
+
+		// Keep one crossing per neighbouring zone; equal costs retain centre-out priority.
+		Int slot;
+		for (slot = 0; slot < candidateCount; ++slot)
+		{
+			if (candidates[slot].zone == zone)
+				break;
+		}
+
+		if (slot < candidateCount && cost >= candidates[slot].totalCost)
+			continue;
+
+		if (slot == candidateCount)
+			++candidateCount;
+
+		candidates[slot].scan = scan;
+		candidates[slot].adjacent = adjacent;
+		candidates[slot].source = source;
+		candidates[slot].destination = destination;
+		candidates[slot].costSoFar = costSoFar;
+		candidates[slot].remainingCost = remainingCost;
+		candidates[slot].zone = zone;
+		candidates[slot].totalCost = cost;
+	}
+
+	// Allocate and enqueue only the selected crossings.
+	for (Int candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
+	{
+		const Candidate &candidate = candidates[candidateIndex];
+		PathfindCell *source = candidate.source;
+		PathfindCell *destination = candidate.destination;
+
+		// Earlier insertions may have claimed a cell, so recheck membership before linking.
+		if (source != parentCell && source->hasInfo() && (source->getOpen() || source->getClosed()))
+			continue;
+
+		if (destination->hasInfo() && (destination->getOpen() || destination->getClosed()))
+			continue;
+
+		// Mark the source as visited without closing the current parent a second time.
+		if (source != parentCell)
+		{
+			if (!source->allocateInfo(candidate.scan))
+				continue;
+
+			source->putOnClosedList(m_closedList);
+		}
+
+		// Add the destination to the frontier with its cached cost and route parent.
+		if (!destination->allocateInfo(candidate.adjacent))
+			continue;
+
+		++cellCount;
+		destination->setCostSoFar(candidate.costSoFar);
+
+		// Use the stored g value to preserve the existing 16-bit cost behaviour.
+		destination->setTotalCost(destination->getCostSoFar() + candidate.remainingCost);
+		destination->setParentCellHierarchical(parentCell);
+		destination->putOnSortedOpenList(m_openList);
+	}
+}
+
 /**
  * Find a short, valid path between given locations.
  * Uses A* algorithm.
  */
+#if RETAIL_COMPATIBLE_PATHFINDING
 void Pathfinder::processHierarchicalCell( const ICoord2D &scanCell, const ICoord2D &delta, PathfindCell *parentCell,
 																				 PathfindCell *goalCell, zoneStorageType parentZone,
 																				 zoneStorageType *examinedZones, Int &numExZones,
@@ -3712,6 +3881,7 @@ void Pathfinder::processHierarchicalCell( const ICoord2D &scanCell, const ICoord
 
 	}
 }
+#endif
 
 
 /**
@@ -3737,6 +3907,8 @@ Path *Pathfinder::findClosestHierarchicalPath( Bool isHuman, const LocomotorSet&
 
 
 
+// TheSuperHackers @bugfix Mauller 20/11/2026 Restore hierarchical pathfinding so the coarse route constrains the fine search.
+// Fix boundary scanning and locomotor connectivity, select crossings per neighbouring zone, and correct bridge costs and failure cleanup.
 /**
  * Find a short, valid path between given locations.
  * Uses A* algorithm.
@@ -3785,6 +3957,12 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 	PathfindLayerEnum layer = TheTerrainLogic->getLayerForDestination(from);
 	PathfindCell *parentCell = getClippedCell( layer,&clipFrom );
 	if (!parentCell) {
+#if RETAIL_COMPATIBLE_PATHFINDING
+		if (s_useFixedPathfinding)
+#endif
+		{
+			goalCell->releaseInfo();
+		}
 		return nullptr;
 	}
 
@@ -3798,8 +3976,17 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 
 	Int zone1, zone2;
 	// m_isCrusher = false;
+#if RETAIL_COMPATIBLE_PATHFINDING
+	if (!s_useFixedPathfinding) {
 	zone1 = m_zoneManager.getEffectiveZone(locomotorSurface, false, parentCell->getZone());
 	zone2 =  m_zoneManager.getEffectiveZone(locomotorSurface, false, goalCell->getZone());
+	}
+	else
+#endif
+	{
+		zone1 = m_zoneManager.getEffectiveZone(locomotorSurface, crusher, parentCell->getZone());
+		zone2 =  m_zoneManager.getEffectiveZone(locomotorSurface, crusher, goalCell->getZone());
+	}
 
 	if ( zone1 != zone2) {
 		goalCell->releaseInfo();
@@ -3874,7 +4061,15 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 			Int curCost = startCell->costToHierGoal(parentCell);
 			Int remCost = startCell->costToHierGoal(goalCell);
 			startCell->setCostSoFar(curCost);
+#if RETAIL_COMPATIBLE_PATHFINDING
+			if (!s_useFixedPathfinding) {
 			startCell->setTotalCost(remCost);
+			}
+			else
+#endif
+			{
+				startCell->setTotalCost(startCell->getCostSoFar() + remCost);
+			}
 			startCell->setParentCellHierarchical(parentCell);
 			// insert newCell in open list such that open list is sorted, smallest total path cost first
 			startCell->putOnSortedOpenList( m_openList );
@@ -3899,7 +4094,15 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 			curCost = cell->costToHierGoal(parentCell);
 			remCost = cell->costToHierGoal(goalCell);
 			cell->setCostSoFar(curCost);
+#if RETAIL_COMPATIBLE_PATHFINDING
+			if (!s_useFixedPathfinding) {
 			cell->setTotalCost(remCost);
+			}
+			else
+#endif
+			{
+				cell->setTotalCost(cell->getCostSoFar() + remCost);
+			}
 			cell->setParentCellHierarchical(parentCell);
 			// insert newCell in open list such that open list is sorted, smallest total path cost first
 			cell->putOnSortedOpenList( m_openList );
@@ -3975,6 +4178,13 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 					if (!cell)
 						continue;
 
+#if RETAIL_COMPATIBLE_PATHFINDING
+					if (s_useFixedPathfinding)
+#endif
+					{
+						if (cell == parentCell) continue; // Crossing back to this node cannot improve its route.
+					}
+
 					if (cell->hasInfo() && (cell->getClosed() || cell->getOpen()))
 						continue;
 
@@ -3995,11 +4205,26 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 #endif
 							{
 								cleanOpenAndClosedLists();
+								parentCell->releaseInfo(); // The current cell has been popped but is not on the closed list yet.
 								goalCell->releaseInfo();
 							}
 							return nullptr;
 						}
+#if RETAIL_COMPATIBLE_PATHFINDING
+						if (!s_useFixedPathfinding) {
 						startCell->setParentCellHierarchical(parentCell);
+						}
+						else
+#endif
+						{
+							// An existing frontier/closed node already has a route; do not reparent it.
+							if (startCell->getOpen() || startCell->getClosed())
+								continue;
+
+							startCell->setCostSoFar(parentCell->getCostSoFar() + startCell->costToHierGoal(parentCell));
+							startCell->setTotalCost(startCell->getCostSoFar() + startCell->costToHierGoal(goalCell));
+							startCell->setParentCellHierarchical(parentCell);
+						}
 						if (!startCell->getClosed() && !startCell->getOpen()) {
 							startCell->putOnClosedList(m_closedList);
 						}
@@ -4016,6 +4241,7 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 #endif
 						{
 							cleanOpenAndClosedLists();
+							parentCell->releaseInfo(); // The current cell has been popped but is not on the closed list yet.
 							goalCell->releaseInfo();
 						}
 						return nullptr;
@@ -4101,6 +4327,8 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 		// put parent cell onto closed list - its evaluation is finished
 		parentCell->putOnClosedList( m_closedList );
 
+#if RETAIL_COMPATIBLE_PATHFINDING
+		if (!s_useFixedPathfinding) {
 		Int i;
 		zoneStorageType examinedZones[PathfindZoneManager::ZONE_BLOCK_SIZE];
 		Int numExZones = 0;
@@ -4227,6 +4455,32 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 
 				processHierarchicalCell(scanCell, delta, parentCell,
 					goalCell, parentZone, examinedZones, numExZones, crusher, cellCount);
+			}
+		}
+		}
+		else
+#endif
+		{
+			ICoord2D delta;
+			if (blockX > 0)
+			{
+				delta.x = -1; delta.y = 0;
+				processHierarchicalSide(blockX, blockY, delta, parentCell, goalCell, parentZone, locomotorSurface, crusher, isHuman, cellCount);
+			}
+			if (blockX < zoneBlockExtent.x - 1)
+			{
+				delta.x = 1; delta.y = 0;
+				processHierarchicalSide(blockX, blockY, delta, parentCell, goalCell, parentZone, locomotorSurface, crusher, isHuman, cellCount);
+			}
+			if (blockY > 0)
+			{
+				delta.x = 0; delta.y = -1;
+				processHierarchicalSide(blockX, blockY, delta, parentCell, goalCell, parentZone, locomotorSurface, crusher, isHuman, cellCount);
+			}
+			if (blockY < zoneBlockExtent.y - 1)
+			{
+				delta.x = 0; delta.y = 1;
+				processHierarchicalSide(blockX, blockY, delta, parentCell, goalCell, parentZone, locomotorSurface, crusher, isHuman, cellCount);
 			}
 		}
 	}
