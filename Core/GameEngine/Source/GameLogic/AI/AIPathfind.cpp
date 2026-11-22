@@ -855,7 +855,7 @@ void Pathfinder::forceMapRecalculation()
 /**
  * Show all cells touched in the last search
  */
-void Pathfinder::debugShowSearch(Bool pathFound, Bool hierarchical)
+void Pathfinder::debugShowSearch(Bool pathFound, Bool hierarchical, PathfindCell *selectedGoal)
 {
 	if (!TheGlobalData->m_debugAI) {
 		return;
@@ -888,13 +888,20 @@ void Pathfinder::debugShowSearch(Bool pathFound, Bool hierarchical)
 			const Int by = cell->getYIndex() / PathfindZoneManager::ZONE_BLOCK_SIZE;
 			blocks[by * extent.x + bx] |= 2;
 		}
+		// Trace the selected chain before search info is cleared. Do not mark the widened corridor.
+		for (PathfindCell* cell = selectedGoal; cell; cell = cell->getParentCell()) {
+			if (cell->getLayer() != LAYER_GROUND) continue;
+			const Int bx = cell->getXIndex() / PathfindZoneManager::ZONE_BLOCK_SIZE;
+			const Int by = cell->getYIndex() / PathfindZoneManager::ZONE_BLOCK_SIZE;
+			blocks[by * extent.x + bx] |= 4;
+		}
 		for (Int by = 0; by < extent.y; ++by) {
 			for (Int bx = 0; bx < extent.x; ++bx) {
 				const UnsignedByte state = blocks[by * extent.x + bx];
 				if (!state) continue;
-				color.red = (state & 2) ? 1.0f : 0.0f;
-				color.green = 0.0f;
-				color.blue = (!pathFound && (state & 2)) ? 0.0f : 1.0f;
+				color.red = (state & 4) ? 0.0f : ((state & 2) ? 1.0f : 0.0f);
+				color.green = (state & 4) ? 1.0f : 0.0f;
+				color.blue = (state & 4) || (!pathFound && (state & 2)) ? 0.0f : 1.0f;
 				for (Int y = by * PathfindZoneManager::ZONE_BLOCK_SIZE;
 					y < (by + 1) * PathfindZoneManager::ZONE_BLOCK_SIZE && y <= m_extent.hi.y; ++y) {
 					for (Int x = bx * PathfindZoneManager::ZONE_BLOCK_SIZE;
@@ -3831,14 +3838,15 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 
 			m_isTunneling = false;
 			// construct and return path
-			Path *path =  buildHierarchicalPath( from, goalCell );
 #if defined(RTS_DEBUG)
+			// Path construction consumes parent links, so draw the selected chain first.
 			Bool show = TheGlobalData->m_debugAI==AI_DEBUG_PATHS;
 			show |= (TheGlobalData->m_debugAI==AI_DEBUG_GROUND_PATHS);
 			if (show)	{
-				debugShowSearch(true, true);
+				debugShowSearch(true, true, goalCell);
 			}
 #endif
+			Path *path =  buildHierarchicalPath( from, goalCell );
 			{
 				cleanOpenAndClosedLists();
 				parentCell->clearSearchData();
@@ -3899,6 +3907,12 @@ Path *Pathfinder::internal_findHierarchicalPath( Bool isHuman, const LocomotorSu
 	if (closestOK && closestCell) {
 		m_isTunneling = false;
 		// construct and return path
+#if defined(RTS_DEBUG)
+		// Draw before buildHierarchicalPath clears the selected parent chain.
+		if (TheGlobalData->m_debugAI == AI_DEBUG_PATHS || TheGlobalData->m_debugAI == AI_DEBUG_GROUND_PATHS) {
+			debugShowSearch(true, true, closestCell);
+		}
+#endif
 		Path *path =  buildHierarchicalPath( from, closestCell );
 
 		{

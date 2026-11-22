@@ -329,7 +329,7 @@ protected:
 	void  prependCells( Path *path, const Coord3D *fromPos,
 																	PathfindCell *goalCell, Bool center ); ///< Add pathfind cells to a path.
 
-	void debugShowSearch(Bool pathFound, Bool hierarchical = false);				///< Show all cells touched in the last search
+	void debugShowSearch(Bool pathFound, Bool hierarchical = false, PathfindCell *selectedGoal = nullptr);				///< Show all cells touched in the last search
 	static LocomotorSurfaceTypeMask validLocomotorSurfacesForCellType(PathfindCell::CellType t);
 
 	void checkChangeLayers(PathfindCell *parentCell);
